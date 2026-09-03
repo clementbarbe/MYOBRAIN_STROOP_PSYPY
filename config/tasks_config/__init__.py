@@ -225,66 +225,90 @@ _BUILTIN_DEFAULTS: dict[str, dict] = {
             'vert': [-1.0, 0.8, -1.0],
         },
         'color_words': {'rouge': 'ROUGE', 'bleu': 'BLEU', 'vert': 'VERT'},
-        'neutral_words': ['XXXX', '%%%%', 'OOOO'],
+        'neutral_words': [
+            'IDEE', 'ACTE', 'FAIT', 'AVIS', 'SENS', 'ETAT',
+            'CAUSE', 'ORDRE', 'THEME', 'DEBUT', 'TERME', 'DROIT',
+        ],
         'incongruent_pairs': [
             {'word': 'ROUGE', 'ink': 'bleu'}, {'word': 'ROUGE', 'ink': 'vert'},
             {'word': 'BLEU', 'ink': 'rouge'}, {'word': 'BLEU', 'ink': 'vert'},
             {'word': 'VERT', 'ink': 'rouge'}, {'word': 'VERT', 'ink': 'bleu'},
         ],
+        'response_mode': 'manual',
         'response_keys_pc': {'rouge': 'left', 'bleu': 'down', 'vert': 'right'},
         'response_keys_fmri': {'rouge': 'b', 'bleu': 'y', 'vert': 'g'},
-        'show_key_reminder': True,
-        'key_reminder_height': 0.04,
-        'key_reminder_y': -0.85,
+        'show_indicators': True,
+        'indicator_radius': 0.028,
+        'indicator_y': -0.82,
+        'indicator_spacing': 0.22,
+        'indicator_order': ['rouge', 'bleu', 'vert'],
+        'mic_sample_rate': 44100,
         'ttl_codes': {
-            'stim_congruent': 110, 'stim_incongruent': 111, 'stim_neutral': 112,
+            'stim_congruent': 110, 'stim_incongruent': 111,
+            'stim_neutral': 112,
             'response_correct': 160, 'response_incorrect': 161,
-            'block_neutral': 20, 'block_incongruent': 21, 'block_congruent': 22,
+            'block_neutral': 20, 'block_incongruent': 21,
+            'block_congruent': 22,
         },
         'designs': {
             1: {
-                'name': 'Initial 15x10 (~7min20)',
-                'paradigm': 'block',
-                'fixation_duration': 0.5, 'stim_duration': 1.2,
-                'iti_duration': 0.3, 'rest_duration': 10.0,
-                'instruction_duration': 3.0, 'pre_block_fixation': 0.0,
-                'blocks': [
-                    {'condition': c, 'n_trials': 10}
-                    for c in ['neutral', 'congruent', 'incongruent'] * 5
-                ],
-            },
-            2: {
-                'name': 'Optimise 15x8 (~5min50)',
-                'paradigm': 'block',
-                'fixation_duration': 0.5, 'stim_duration': 1.2,
-                'iti_duration': 0.3, 'rest_duration': 8.0,
-                'instruction_duration': 3.0, 'pre_block_fixation': 0.0,
-                'blocks': [
-                    {'condition': c, 'n_trials': 8}
-                    for c in ['neutral', 'congruent', 'incongruent'] * 5
-                ],
-            },
-            3: {
-                'name': 'Compact 12x10 (~5min30)',
-                'paradigm': 'block',
-                'fixation_duration': 0.5, 'stim_duration': 1.2,
-                'iti_duration': 0.3, 'rest_duration': 8.0,
-                'instruction_duration': 3.0, 'pre_block_fixation': 0.0,
-                'blocks': [
-                    {'condition': c, 'n_trials': 10}
-                    for c in ['neutral', 'congruent', 'incongruent'] * 4
-                ],
-            },
-            4: {
-                'name': 'Final 9x15 (~5min25)',
+                'name': 'Mini-blocs 24x4 (~6min07)',
                 'paradigm': 'block',
                 'fixation_duration': 0.5, 'stim_duration': 1.2,
                 'iti_duration': 0.3, 'rest_duration': 7.0,
-                'instruction_duration': 3.0, 'pre_block_fixation': 0.0,
+                'instruction_duration': 0.0, 'pre_block_fixation': 0.0,
                 'blocks': [
-                    {'condition': c, 'n_trials': 15}
-                    for c in ['neutral', 'congruent', 'incongruent'] * 3
+                    {'condition': c, 'n_trials': 4} for c in [
+                        'neutral', 'congruent', 'incongruent',
+                        'incongruent', 'neutral', 'congruent',
+                        'congruent', 'incongruent', 'neutral',
+                        'neutral', 'congruent', 'incongruent',
+                        'incongruent', 'neutral', 'congruent',
+                        'congruent', 'incongruent', 'neutral',
+                        'neutral', 'incongruent', 'congruent',
+                        'congruent', 'neutral', 'incongruent',
+                    ]
                 ],
+            },
+            2: {
+                'name': 'Mini-blocs 18x7 (~6min25)',
+                'paradigm': 'block',
+                'fixation_duration': 0.5, 'stim_duration': 1.2,
+                'iti_duration': 0.3, 'rest_duration': 7.0,
+                'instruction_duration': 0.0, 'pre_block_fixation': 0.0,
+                'blocks': [
+                    {'condition': c, 'n_trials': 7} for c in [
+                        'neutral', 'congruent', 'incongruent',
+                        'incongruent', 'neutral', 'congruent',
+                        'congruent', 'incongruent', 'neutral',
+                        'neutral', 'congruent', 'incongruent',
+                        'incongruent', 'neutral', 'congruent',
+                        'congruent', 'incongruent', 'neutral',
+                    ]
+                ],
+            },
+            3: {
+                'name': 'Blocs 9x15 (~5min40)',
+                'paradigm': 'block',
+                'fixation_duration': 0.5, 'stim_duration': 1.2,
+                'iti_duration': 0.3, 'rest_duration': 7.0,
+                'instruction_duration': 0.0, 'pre_block_fixation': 0.0,
+                'blocks': [
+                    {'condition': c, 'n_trials': 15} for c in [
+                        'neutral', 'congruent', 'incongruent',
+                        'incongruent', 'neutral', 'congruent',
+                        'congruent', 'incongruent', 'neutral',
+                    ]
+                ],
+            },
+            4: {
+                'name': 'Event-related 75 (~6min12)',
+                'paradigm': 'event',
+                'fixation_duration': 0.5, 'stim_duration': 1.2,
+                'iti_min': 1.5, 'iti_max': 4.5,
+                'rest_duration': 10.0,
+                'instruction_duration': 0.0, 'pre_block_fixation': 0.0,
+                'blocks': [{'condition': 'mixed', 'n_trials': 75}],
             },
         },
     },

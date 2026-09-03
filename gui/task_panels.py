@@ -179,10 +179,10 @@ class StroopPanel(QWidget):
     TASK = 'stroop'
 
     DESIGN_INFO = {
-        1: ("Initial 15x10",   "~7min20"),
-        2: ("Optimise 15x8",   "~5min50"),
-        3: ("Compact 12x10",   "~5min30"),
-        4: ("Final 9x15",      "~5min25"),
+        1: ("Mini-blocs 24x4",  "6min07", "24 blocs x 4 essais | rest 7s | 96 essais"),
+        2: ("Mini-blocs 18x7",  "6min25", "18 blocs x 7 essais | rest 7s | 126 essais"),
+        3: ("Blocs 9x15",       "5min40", "9 blocs x 15 essais | rest 7s | 135 essais"),
+        4: ("Event-related",    "6min12", "75 essais randomises | ITI 1.5-4.5s"),
     }
 
     def __init__(self, menu):
@@ -193,41 +193,42 @@ class StroopPanel(QWidget):
         lo = QVBoxLayout(self)
         lo.setSpacing(8)
 
-        # ── Manual designs ───────────────────────────────────────────
-        manual_group = QGroupBox("Manuel (boutons)")
+        # ── Manual ───────────────────────────────────────────────────
+        manual_group = QGroupBox("Manuel (boutons + cercles couleur)")
         mg = QGridLayout(manual_group)
         mg.setSpacing(6)
-        for i, (did, _) in enumerate(sorted(self.designs.items())):
-            short, dur = self.DESIGN_INFO.get(did, (f"D{did}", "?"))
+        for i, did in enumerate(sorted(self.designs.keys())):
+            short, dur, desc = self.DESIGN_INFO.get(did, (f"D{did}", "?", ""))
             btn = QPushButton(f"D{did}: {short}  [{dur}]")
             btn.setObjectName("run")
+            btn.setToolTip(desc)
             btn.clicked.connect(lambda _, d=did: self._run(d, 'manual'))
             mg.addWidget(btn, i // 2, i % 2)
         lo.addWidget(manual_group)
 
-        # ── Vocal designs ────────────────────────────────────────────
+        # ── Vocal ────────────────────────────────────────────────────
         vocal_group = QGroupBox("Vocal (microphone)")
         vg = QGridLayout(vocal_group)
         vg.setSpacing(6)
-        for i, (did, _) in enumerate(sorted(self.designs.items())):
-            short, dur = self.DESIGN_INFO.get(did, (f"D{did}", "?"))
+        for i, did in enumerate(sorted(self.designs.keys())):
+            short, dur, desc = self.DESIGN_INFO.get(did, (f"D{did}", "?", ""))
             btn = QPushButton(f"D{did}: {short}  [{dur}]")
             btn.setObjectName("run")
-            btn.setToolTip("Reponse vocale — enregistrement micro continu")
+            btn.setToolTip(desc + " | enregistrement micro continu")
             btn.clicked.connect(lambda _, d=did: self._run(d, 'vocal'))
             vg.addWidget(btn, i // 2, i % 2)
         lo.addWidget(vocal_group)
 
         info = QLabel(
-            "3 couleurs : ROUGE  BLEU  VERT\n"
-            "Neutre : XXXX / %%%% / OOOO\n"
-            "Manuel : cercles colores, pas de texte\n"
-            "Vocal : dire la couleur, micro enregistre"
+            "Couleurs : ROUGE  BLEU  VERT\n"
+            "Neutre : mots abstraits (IDEE, CAUSE, ORDRE...)\n"
+            "Manuel : 3 cercles colores en bas, sans texte\n"
+            "Vocal : dire la couleur, micro enregistre en continu"
         )
         info.setStyleSheet("color: #808080; font-size: 11px; padding: 4px;")
         lo.addWidget(info)
 
-        grp, self.sp = _make_training_group(10, self._train_manual)
+        grp, self.sp = _make_training_group(6, self._train)
         lo.addWidget(grp)
         lo.addStretch()
 
@@ -238,10 +239,10 @@ class StroopPanel(QWidget):
             'extra_params': {'response_mode': mode},
         })
 
-    def _train_manual(self):
+    def _train(self):
         n = self.sp.value()
         self.menu.run_experiment({
-            'task_name': self.TASK, 'design_id': 4,
+            'task_name': self.TASK, 'design_id': 1,
             'extra_params': {
                 'response_mode': 'manual',
                 'block_sequence': [

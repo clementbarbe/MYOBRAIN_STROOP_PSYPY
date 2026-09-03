@@ -15,7 +15,23 @@ color_words:
   bleu:  "BLEU"
   vert:  "VERT"
 
-neutral_words: ["XXXX", "%%%%", "OOOO"]
+# ── Neutral words ────────────────────────────────────────────────────
+# Mots abstraits français, sans association couleur ni representation
+# visuelle. Longueur appariee aux mots couleurs (4-5 lettres).
+# Le sujet doit les lire (traitement lexical) sans conflit chromatique.
+neutral_words:
+  - IDEE      # 4
+  - ACTE      # 4
+  - FAIT      # 4
+  - AVIS      # 4
+  - SENS      # 4
+  - ETAT      # 4
+  - CAUSE     # 5
+  - ORDRE     # 5
+  - THEME     # 5
+  - DEBUT     # 5
+  - TERME     # 5
+  - DROIT     # 5
 
 incongruent_pairs:
   - { word: "ROUGE", ink: "bleu" }
@@ -26,11 +42,8 @@ incongruent_pairs:
   - { word: "VERT",  ink: "bleu" }
 
 # ── Response mode ────────────────────────────────────────────────────
-# "manual" = button press (default)
-# "vocal"  = spoken response + continuous mic recording
-response_mode: manual
+response_mode: manual        # "manual" | "vocal"
 
-# ── Manual response keys ────────────────────────────────────────────
 response_keys_pc:
   rouge: "left"
   bleu:  "down"
@@ -41,13 +54,13 @@ response_keys_fmri:
   bleu:  "y"
   vert:  "g"
 
-# ── Visual indicators (circles, no text) ────────────────────────────
-indicator_radius: 0.03
-indicator_y: -0.85
-indicator_spacing: 0.25
-# Order: rouge, bleu, vert (left to right)
+# ── Colored circle indicators (always visible, no text) ─────────────
+show_indicators: true
+indicator_radius: 0.028
+indicator_y: -0.82
+indicator_spacing: 0.22
+indicator_order: [rouge, bleu, vert]
 
-# ── Microphone (vocal mode) ─────────────────────────────────────────
 mic_sample_rate: 44100
 
 ttl_codes:
@@ -60,99 +73,119 @@ ttl_codes:
   block_incongruent: 21
   block_congruent: 22
 
+# ═══════════════════════════════════════════════════════════════════
+# DESIGNS — tous <= 6min30
+# Essai bloc : 500ms fix + 1200ms stim + 300ms ITI = 2.0s
+# ═══════════════════════════════════════════════════════════════════
+
 designs:
 
+  # ── D1 : mini-mini blocs (4 essais) ────────────────────────────────
+  # 24 blocs x 4 essais = 96 essais (32/condition)
+  # Bloc = 8s | Rest = 7s | Total = 192 + 175 = 367s = 6min07
   1:
-    name: "Initial 15x10 (~7min20)"
-    paradigm: block
-    fixation_duration: 0.5
-    stim_duration: 1.2
-    iti_duration: 0.3
-    rest_duration: 10.0
-    instruction_duration: 3.0
-    pre_block_fixation: 0.0
-    blocks:
-      - { condition: neutral,      n_trials: 10 }
-      - { condition: congruent,    n_trials: 10 }
-      - { condition: incongruent,  n_trials: 10 }
-      - { condition: neutral,      n_trials: 10 }
-      - { condition: congruent,    n_trials: 10 }
-      - { condition: incongruent,  n_trials: 10 }
-      - { condition: neutral,      n_trials: 10 }
-      - { condition: congruent,    n_trials: 10 }
-      - { condition: incongruent,  n_trials: 10 }
-      - { condition: neutral,      n_trials: 10 }
-      - { condition: congruent,    n_trials: 10 }
-      - { condition: incongruent,  n_trials: 10 }
-      - { condition: neutral,      n_trials: 10 }
-      - { condition: congruent,    n_trials: 10 }
-      - { condition: incongruent,  n_trials: 10 }
-
-  2:
-    name: "Optimise 15x8 (~5min50)"
-    paradigm: block
-    fixation_duration: 0.5
-    stim_duration: 1.2
-    iti_duration: 0.3
-    rest_duration: 8.0
-    instruction_duration: 3.0
-    pre_block_fixation: 0.0
-    blocks:
-      - { condition: neutral,      n_trials: 8 }
-      - { condition: congruent,    n_trials: 8 }
-      - { condition: incongruent,  n_trials: 8 }
-      - { condition: neutral,      n_trials: 8 }
-      - { condition: congruent,    n_trials: 8 }
-      - { condition: incongruent,  n_trials: 8 }
-      - { condition: neutral,      n_trials: 8 }
-      - { condition: congruent,    n_trials: 8 }
-      - { condition: incongruent,  n_trials: 8 }
-      - { condition: neutral,      n_trials: 8 }
-      - { condition: congruent,    n_trials: 8 }
-      - { condition: incongruent,  n_trials: 8 }
-      - { condition: neutral,      n_trials: 8 }
-      - { condition: congruent,    n_trials: 8 }
-      - { condition: incongruent,  n_trials: 8 }
-
-  3:
-    name: "Compact 12x10 (~5min30)"
-    paradigm: block
-    fixation_duration: 0.5
-    stim_duration: 1.2
-    iti_duration: 0.3
-    rest_duration: 8.0
-    instruction_duration: 3.0
-    pre_block_fixation: 0.0
-    blocks:
-      - { condition: neutral,      n_trials: 10 }
-      - { condition: congruent,    n_trials: 10 }
-      - { condition: incongruent,  n_trials: 10 }
-      - { condition: neutral,      n_trials: 10 }
-      - { condition: congruent,    n_trials: 10 }
-      - { condition: incongruent,  n_trials: 10 }
-      - { condition: neutral,      n_trials: 10 }
-      - { condition: congruent,    n_trials: 10 }
-      - { condition: incongruent,  n_trials: 10 }
-      - { condition: neutral,      n_trials: 10 }
-      - { condition: congruent,    n_trials: 10 }
-      - { condition: incongruent,  n_trials: 10 }
-
-  4:
-    name: "Final 9x15 (~5min25)"
+    name: "Mini-blocs 24x4 (~6min07)"
     paradigm: block
     fixation_duration: 0.5
     stim_duration: 1.2
     iti_duration: 0.3
     rest_duration: 7.0
-    instruction_duration: 3.0
+    instruction_duration: 0.0
     pre_block_fixation: 0.0
     blocks:
-      - { condition: neutral,      n_trials: 15 }
-      - { condition: congruent,    n_trials: 15 }
-      - { condition: incongruent,  n_trials: 15 }
-      - { condition: neutral,      n_trials: 15 }
-      - { condition: congruent,    n_trials: 15 }
-      - { condition: incongruent,  n_trials: 15 }
-      - { condition: neutral,      n_trials: 15 }
-      - { condition: congruent,    n_trials: 15 }
-      - { condition: incongruent,  n_trials: 15 }
+      - { condition: neutral,     n_trials: 4 }
+      - { condition: congruent,   n_trials: 4 }
+      - { condition: incongruent, n_trials: 4 }
+      - { condition: incongruent, n_trials: 4 }
+      - { condition: neutral,     n_trials: 4 }
+      - { condition: congruent,   n_trials: 4 }
+      - { condition: congruent,   n_trials: 4 }
+      - { condition: incongruent, n_trials: 4 }
+      - { condition: neutral,     n_trials: 4 }
+      - { condition: neutral,     n_trials: 4 }
+      - { condition: congruent,   n_trials: 4 }
+      - { condition: incongruent, n_trials: 4 }
+      - { condition: incongruent, n_trials: 4 }
+      - { condition: neutral,     n_trials: 4 }
+      - { condition: congruent,   n_trials: 4 }
+      - { condition: congruent,   n_trials: 4 }
+      - { condition: incongruent, n_trials: 4 }
+      - { condition: neutral,     n_trials: 4 }
+      - { condition: neutral,     n_trials: 4 }
+      - { condition: incongruent, n_trials: 4 }
+      - { condition: congruent,   n_trials: 4 }
+      - { condition: congruent,   n_trials: 4 }
+      - { condition: neutral,     n_trials: 4 }
+      - { condition: incongruent, n_trials: 4 }
+
+  # ── D2 : mini blocs (7 essais) ─────────────────────────────────────
+  # 18 blocs x 7 essais = 126 essais (42/condition)
+  # Bloc = 14s | Rest = 7s | Total = 252 + 133 = 385s = 6min25
+  2:
+    name: "Mini-blocs 18x7 (~6min25)"
+    paradigm: block
+    fixation_duration: 0.5
+    stim_duration: 1.2
+    iti_duration: 0.3
+    rest_duration: 7.0
+    instruction_duration: 0.0
+    pre_block_fixation: 0.0
+    blocks:
+      - { condition: neutral,     n_trials: 7 }
+      - { condition: congruent,   n_trials: 7 }
+      - { condition: incongruent, n_trials: 7 }
+      - { condition: incongruent, n_trials: 7 }
+      - { condition: neutral,     n_trials: 7 }
+      - { condition: congruent,   n_trials: 7 }
+      - { condition: congruent,   n_trials: 7 }
+      - { condition: incongruent, n_trials: 7 }
+      - { condition: neutral,     n_trials: 7 }
+      - { condition: neutral,     n_trials: 7 }
+      - { condition: congruent,   n_trials: 7 }
+      - { condition: incongruent, n_trials: 7 }
+      - { condition: incongruent, n_trials: 7 }
+      - { condition: neutral,     n_trials: 7 }
+      - { condition: congruent,   n_trials: 7 }
+      - { condition: congruent,   n_trials: 7 }
+      - { condition: incongruent, n_trials: 7 }
+      - { condition: neutral,     n_trials: 7 }
+
+  # ── D3 : blocs longs (15 essais) ───────────────────────────────────
+  # 9 blocs x 15 essais = 135 essais (45/condition)
+  # Bloc = 30s | Rest = 7s | Total = 270 + 70 = 340s = 5min40
+  3:
+    name: "Blocs 9x15 (~5min40)"
+    paradigm: block
+    fixation_duration: 0.5
+    stim_duration: 1.2
+    iti_duration: 0.3
+    rest_duration: 7.0
+    instruction_duration: 0.0
+    pre_block_fixation: 0.0
+    blocks:
+      - { condition: neutral,     n_trials: 15 }
+      - { condition: congruent,   n_trials: 15 }
+      - { condition: incongruent, n_trials: 15 }
+      - { condition: incongruent, n_trials: 15 }
+      - { condition: neutral,     n_trials: 15 }
+      - { condition: congruent,   n_trials: 15 }
+      - { condition: congruent,   n_trials: 15 }
+      - { condition: incongruent, n_trials: 15 }
+      - { condition: neutral,     n_trials: 15 }
+
+  # ── D4 : event-related ─────────────────────────────────────────────
+  # 75 essais randomises (25/condition), ITI jittere 1.5-4.5s
+  # Essai moyen = 0.5 + 1.2 + 3.0 = 4.7s
+  # Total = 352 + 20 (rest) = 372s = 6min12
+  4:
+    name: "Event-related 75 (~6min12)"
+    paradigm: event
+    fixation_duration: 0.5
+    stim_duration: 1.2
+    iti_min: 1.5
+    iti_max: 4.5
+    rest_duration: 10.0
+    instruction_duration: 0.0
+    pre_block_fixation: 0.0
+    blocks:
+      - { condition: mixed, n_trials: 75 }

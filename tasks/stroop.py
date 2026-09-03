@@ -2,28 +2,30 @@
 Stroop Color-Word Task (French) — manual & vocal versions.
 
 Manual version:
-    Respond with buttons: left=ROUGE, down=BLEU, right=VERT.
-    No visual indicators on screen during trials (trained beforehand).
+    3 colored circles at bottom of screen (no text) indicating
+    the spatial order of the response buttons.
+    Buttons: left=ROUGE, down=BLEU, right=VERT.
 
 Vocal version:
     Say the ink color aloud. Continuous mic recording from trigger to end.
-    No button press required. RT extracted offline from audio.
-
-Both versions share identical stimuli, timing, and block structure.
-
-Trial timing (2s total):
-    500ms fixation + 1200ms colored word + 300ms ITI
+    No button press. RT extracted offline from the audio file.
 
 Stimuli:
-    Congruent:   ROUGE in red, BLEU in blue, VERT in green
-    Incongruent: ROUGE in blue, ROUGE in green, BLEU in red, etc (6 pairs)
-    Neutral:     XXXX / %%%% / OOOO in color
+    Congruent   : ROUGE in red, BLEU in blue, VERT in green
+    Incongruent : ROUGE in blue, ROUGE in green, BLEU in red ... (6 pairs)
+    Neutral     : abstract French words (IDEE, CAUSE, ORDRE...) in color
+                  -> forces lexical reading without chromatic conflict
 
-Randomization:
-    - No >2 same color consecutively
-    - No >2 same word consecutively
-    - Colors balanced within each block
-    - Incongruent: 6 pairs balanced
+Trial timing:
+    Block designs : 500ms fixation + 1200ms word + 300ms ITI = 2.0s
+    Event design  : 500ms fixation + 1200ms word + jittered ITI (1.5-4.5s)
+
+Randomisation (within block):
+    - Colors balanced
+    - No >2 consecutive same ink color
+    - No >2 consecutive same word
+    - Incongruent blocks: 6 word/ink pairs balanced
+    - Event design: never 2 consecutive trials of the same type
 """
 
 from __future__ import annotations
@@ -58,7 +60,7 @@ class StroopTask(BaseTask):
             pos=(0, 0), bold=True, font='monospace',
         )
 
-        # Colors
+        # ── Colors ───────────────────────────────────────────────────
         colors_cfg = self.task_config.get('colors', {})
         self._color_rgb = {
             'rouge': colors_cfg.get('rouge', [1.0, -1.0, -1.0]),
@@ -67,7 +69,7 @@ class StroopTask(BaseTask):
         }
         self._ink_colors = list(self._color_rgb.keys())
 
-        # Words
+        # ── Words ────────────────────────────────────────────────────
         cw = self.task_config.get('color_words', {})
         self._color_words = {
             'rouge': cw.get('rouge', 'ROUGE'),
@@ -75,31 +77,30 @@ class StroopTask(BaseTask):
             'vert':  cw.get('vert',  'VERT'),
         }
         self._neutral_words = self.task_config.get(
-            'neutral_words', ['XXXX', '%%%%', 'OOOO']
+            'neutral_words',
+            ['IDEE', 'ACTE', 'FAIT', 'AVIS', 'SENS', 'ETAT',
+             'CAUSE', 'ORDRE', 'THEME', 'DEBUT', 'TERME', 'DROIT'],
         )
 
-        # Incongruent pairs
         pairs_cfg = self.task_config.get('incongruent_pairs', [])
         if pairs_cfg:
             self._inc_pairs = [(p['word'], p['ink']) for p in pairs_cfg]
         else:
             self._inc_pairs = [
                 (self._color_words[w], i)
-                for w in self._ink_colors for i in self._ink_colors if w != i
+                for w in self._ink_colors
+                for i in self._ink_colors if w != i
             ]
 
         # ── Response mode ────────────────────────────────────────────
         self._response_mode = self.task_config.get('response_mode', 'manual')
         self._is_vocal = (self._response_mode == 'vocal')
 
-        # ── Manual mode: keys only, NO visual indicators ─────────────
+        # ── Response keys (manual) ───────────────────────────────────
         if not self._is_vocal:
-            mode = self.settings.mode
-            if mode == 'fmri':
-                keys_cfg = self.task_config.get('response_keys_fmri', {})
-            else:
-                keys_cfg = self.task_config.get('response_keys_pc', {})
-
+            key_src = ('response_keys_fmri' if self.settings.mode == 'fmri'
+                       else 'response_keys_pc')
+            keys_cfg = self.task_config.get(key_src, {})
             self._color_to_key = {
                 'rouge': keys_cfg.get('rouge', 'left'),
                 'bleu':  keys_cfg.get('bleu',  'down'),
@@ -112,16 +113,57 @@ class StroopTask(BaseTask):
             self._key_to_color = {}
             self._valid_keys = []
 
+        # ── Colored circle indicators (no text) ──────────────────────
+        self._indicators = []
+        show_ind = self.task_config.get('show_indicators', True)
+        if show_ind and not self._is_vocal:
+            radius = self.task_config.get('indicator_radius', 0.028)
+            ind_y = self.task_config.get('indicator_y', -0.82)
+            spacing = self.task_config.get('indicator_spacing', 0.22)
+            order = self.task_config.get(
+                'indicator_order', ['rouge', 'bleu', 'vert']
+            )
+            n = len(order)
+            x0 = -spacing * (n - 1) / 2.0
+            for i, c in enumerate(order):
+                self._indicators.append(visual.Circle(
+                    self.win,
+                    radius=radius,
+                    fillColor=self._color_rgb[c],
+                    lineColor=self._color_rgb[c],
+                    pos=(x0 + i * spacing, ind_y),
+                    edges=64,
+                ))
+
         # ── Microphone (vocal mode) ──────────────────────────────────
         self._mic = None
         if self._is_vocal:
             from hardware.microphone import MicrophoneRecorder
-            sr = self.task_config.get('mic_sample_rate', 44100)
             self._mic = MicrophoneRecorder(
-                sample_rate=sr, logger=self.logger,
+                sample_rate=self.task_config.get('mic_sample_rate', 44100),
+                logger=self.logger,
             )
 
         self._ttl = self.task_config.get('ttl_codes', {})
+
+    # ── Drawing helper ───────────────────────────────────────────────
+
+    def _draw_indicators(self) -> None:
+        """Draw the 3 colored circles at the bottom of the screen."""
+        for c in self._indicators:
+            c.draw()
+
+    def show_fixation(self, duration: float) -> None:
+        """Override: keep colored indicators visible during rest/fixation."""
+        self._fixation.draw()
+        self._draw_indicators()
+        self.win.flip()
+        deadline = self.clock.time + duration
+        while self.clock.time < deadline:
+            self._fixation.draw()
+            self._draw_indicators()
+            self.win.flip()
+            self.get_keys(key_list=[])
 
     # ═════════════════════════════════════════════════════════════════
     # INSTRUCTIONS
@@ -135,60 +177,49 @@ class StroopTask(BaseTask):
             return (
                 f"Stroop Vocal\n\n"
                 f"Design : {self.design.get('name', '')}\n"
-                f"{n_blocs} blocs, {total} essais\n\n"
+                f"{total} essais\n\n"
                 f"Nommez a voix haute la COULEUR DE L'ENCRE.\n"
                 f"Ignorez ce que le mot dit !\n\n"
-                f"Dites uniquement :\n"
-                f"  'rouge', 'bleu' ou 'vert'\n\n"
+                f"Dites uniquement : 'rouge', 'bleu' ou 'vert'\n\n"
                 f"Votre voix sera enregistree.\n\n"
                 f"Repondez le plus VITE et PRECISEMENT possible.\n\n"
                 f"Appuyez sur une touche pour continuer..."
             )
-        else:
-            k_r = self._color_to_key['rouge'].upper()
-            k_b = self._color_to_key['bleu'].upper()
-            k_v = self._color_to_key['vert'].upper()
-            return (
-                f"Stroop — Denomination de couleur\n\n"
-                f"Design : {self.design.get('name', '')}\n"
-                f"{n_blocs} blocs, {total} essais\n\n"
-                f"Repondez a la COULEUR DE L'ENCRE.\n"
-                f"Ignorez ce que le mot dit !\n\n"
-                f"  ROUGE  ->  [{k_r}]  (index)\n"
-                f"  BLEU   ->  [{k_b}]  (majeur)\n"
-                f"  VERT   ->  [{k_v}]  (annulaire)\n\n"
-                f"Repondez le plus VITE et PRECISEMENT possible.\n\n"
-                f"Appuyez sur une touche pour continuer..."
-            )
+
+        k_r = self._color_to_key['rouge'].upper()
+        k_b = self._color_to_key['bleu'].upper()
+        k_v = self._color_to_key['vert'].upper()
+        return (
+            f"Stroop — Denomination de couleur\n\n"
+            f"Design : {self.design.get('name', '')}\n"
+            f"{n_blocs} bloc(s), {total} essais\n\n"
+            f"Repondez a la COULEUR DE L'ENCRE.\n"
+            f"Ignorez ce que le mot dit !\n\n"
+            f"  ROUGE  ->  [{k_r}]  (index)\n"
+            f"  BLEU   ->  [{k_b}]  (majeur)\n"
+            f"  VERT   ->  [{k_v}]  (annulaire)\n\n"
+            f"Les 3 cercles colores en bas de l'ecran\n"
+            f"rappellent l'ordre des boutons.\n\n"
+            f"Repondez le plus VITE et PRECISEMENT possible.\n\n"
+            f"Appuyez sur une touche pour continuer..."
+        )
 
     def _get_block_instruction(self, block_idx: int,
                                block_def: dict) -> str | None:
-        instr_dur = self.design.get('instruction_duration', 3.0)
-        if instr_dur <= 0:
+        if self.design.get('instruction_duration', 0.0) <= 0:
             return None
-
         n = len(self.block_sequence)
-        if self._is_vocal:
-            return (
-                f"Bloc {block_idx + 1}/{n}\n\n"
-                f"Nommez la COULEUR DE L'ENCRE\n"
-                f"a voix haute"
-            )
-        else:
-            return (
-                f"Bloc {block_idx + 1}/{n}\n\n"
-                f"Nommez la COULEUR DE L'ENCRE\n"
-                f"le plus vite possible"
-            )
+        return (
+            f"Bloc {block_idx + 1}/{n}\n\n"
+            f"Nommez la COULEUR DE L'ENCRE"
+        )
 
     # ═════════════════════════════════════════════════════════════════
-    # TRIGGER — start mic recording
+    # TRIGGER — start mic recording (vocal mode)
     # ═════════════════════════════════════════════════════════════════
 
     def wait_for_trigger(self) -> None:
-        """Override: start microphone right after trigger (vocal mode)."""
         super().wait_for_trigger()
-
         if self._is_vocal and self._mic is not None:
             mic_path = (
                 self.settings.task_dir(self.TASK_NAME)
@@ -201,64 +232,170 @@ class StroopTask(BaseTask):
     # ═════════════════════════════════════════════════════════════════
 
     def generate_trials(self, block_def: dict) -> list:
+        """
+        Return list of (word, ink_color, trial_type, iti) tuples.
+
+        Block designs use a fixed ITI.
+        Event design uses a jittered ITI per trial.
+        """
         condition = block_def['condition']
         n = block_def['n_trials']
+        paradigm = self.design.get('paradigm', 'block')
 
+        # ── Build trial content ──────────────────────────────────────
         if condition == 'neutral':
             trials = self._gen_neutral(n)
         elif condition == 'congruent':
             trials = self._gen_congruent(n)
         elif condition == 'incongruent':
             trials = self._gen_incongruent(n)
+        elif condition == 'mixed':
+            trials = self._gen_mixed(n)
         else:
             trials = self._gen_neutral(n)
 
-        trials = self._double_desequence(trials)
-        return trials
+        # ── Order constraints ────────────────────────────────────────
+        if condition == 'mixed':
+            # Event-related: never 2 consecutive trials of the same type
+            trials = self._no_repeat_type(trials)
+            trials = self._soft_desequence_color(trials, max_c=2)
+        else:
+            trials = self._double_desequence(trials, max_c=2)
 
-    def _gen_congruent(self, n):
+        # ── Attach ITIs ──────────────────────────────────────────────
+        if paradigm == 'event':
+            from tasks.utils.sequence import generate_jittered_isis
+            itis = generate_jittered_isis(
+                n,
+                self.design.get('iti_min', 1.5),
+                self.design.get('iti_max', 4.5),
+            )
+        else:
+            itis = [self.design.get('iti_duration', 0.3)] * n
+
+        return [(t[0], t[1], t[2], iti) for t, iti in zip(trials, itis)]
+
+    # ── Content generators ───────────────────────────────────────────
+
+    def _gen_congruent(self, n: int) -> list:
+        """Balanced congruent trials: each ink color equally often."""
         trials = []
-        per = n // 3
-        rem = n - per * 3
+        per, rem = divmod(n, 3)
         for i, c in enumerate(self._ink_colors):
             cnt = per + (1 if i < rem else 0)
             trials.extend([(self._color_words[c], c, 'congruent')] * cnt)
         random.shuffle(trials)
         return trials
 
-    def _gen_incongruent(self, n):
+    def _gen_incongruent(self, n: int) -> list:
+        """Balanced incongruent: 6 word/ink pairs equally distributed."""
         trials = []
-        np_ = len(self._inc_pairs)
-        per = n // np_
-        rem = n - per * np_
+        n_pairs = len(self._inc_pairs)
+        per, rem = divmod(n, n_pairs)
         for i, (w, ink) in enumerate(self._inc_pairs):
             cnt = per + (1 if i < rem else 0)
             trials.extend([(w, ink, 'incongruent')] * cnt)
         random.shuffle(trials)
         return trials
 
-    def _gen_neutral(self, n):
+    def _gen_neutral(self, n: int) -> list:
+        """Balanced neutral: abstract words, ink colors equally distributed."""
         trials = []
-        per = n // 3
-        rem = n - per * 3
+        per, rem = divmod(n, 3)
+        pool = list(self._neutral_words)
+        random.shuffle(pool)
+        k = 0
         for i, c in enumerate(self._ink_colors):
             cnt = per + (1 if i < rem else 0)
-            for j in range(cnt):
-                sym = self._neutral_words[j % len(self._neutral_words)]
-                trials.append((sym, c, 'neutral'))
+            for _ in range(cnt):
+                trials.append((pool[k % len(pool)], c, 'neutral'))
+                k += 1
         random.shuffle(trials)
         return trials
 
-    def _double_desequence(self, trials, max_c=2):
-        trials = desequence(trials, key_func=lambda t: t[1], max_consecutive=max_c)
+    def _gen_mixed(self, n: int) -> list:
+        """Equal mix of the 3 trial types (event-related design)."""
+        per, rem = divmod(n, 3)
+        n_neu = per + (1 if rem > 0 else 0)
+        n_con = per + (1 if rem > 1 else 0)
+        n_inc = n - n_neu - n_con
+        return (
+            self._gen_neutral(n_neu)
+            + self._gen_congruent(n_con)
+            + self._gen_incongruent(n_inc)
+        )
+
+    # ── Ordering constraints ─────────────────────────────────────────
+
+    def _no_repeat_type(self, trials: list, max_attempts: int = 500) -> list:
+        """
+        Reorder so that no two consecutive trials share the same trial_type.
+        Greedy construction from type-pools (always feasible when balanced).
+        """
+        pools = defaultdict(list)
+        for t in trials:
+            pools[t[2]].append(t)
+        for p in pools.values():
+            random.shuffle(p)
+
+        result = []
+        last_type = None
+        total = len(trials)
+
+        for _ in range(total):
+            # Pick the largest remaining pool that differs from last_type
+            candidates = [
+                k for k, v in pools.items() if v and k != last_type
+            ]
+            if not candidates:
+                candidates = [k for k, v in pools.items() if v]
+                if not candidates:
+                    break
+            chosen = max(candidates, key=lambda k: len(pools[k]))
+            result.append(pools[chosen].pop())
+            last_type = chosen
+
+        return result
+
+    def _soft_desequence_color(self, trials: list, max_c: int = 2) -> list:
+        """
+        Avoid >max_c consecutive identical ink colors WITHOUT breaking
+        the trial-type alternation (swap only between same-type trials).
+        """
+        for _ in range(80):
+            ok = True
+            for i in range(max_c, len(trials)):
+                window = [trials[j][1] for j in range(i - max_c, i + 1)]
+                if len(set(window)) == 1:
+                    ok = False
+                    cands = [
+                        k for k in range(len(trials))
+                        if trials[k][2] == trials[i][2]
+                        and trials[k][1] != trials[i][1]
+                    ]
+                    if cands:
+                        s = random.choice(cands)
+                        trials[i], trials[s] = trials[s], trials[i]
+                    break
+            if ok:
+                break
+        return trials
+
+    def _double_desequence(self, trials: list, max_c: int = 2) -> list:
+        """No >max_c consecutive same ink color AND same word."""
+        trials = desequence(
+            trials, key_func=lambda t: t[1], max_consecutive=max_c
+        )
         for _ in range(50):
             ok = True
             for i in range(max_c, len(trials)):
                 w = [trials[j][0] for j in range(i - max_c, i + 1)]
                 if len(set(w)) == 1:
                     ok = False
-                    cands = [k for k in range(i + 1, len(trials))
-                             if trials[k][0] != trials[i][0]]
+                    cands = [
+                        k for k in range(i + 1, len(trials))
+                        if trials[k][0] != trials[i][0]
+                    ]
                     if cands:
                         s = random.choice(cands)
                         trials[i], trials[s] = trials[s], trials[i]
@@ -273,11 +410,10 @@ class StroopTask(BaseTask):
 
     def run_trial(self, trial_data, block_idx: int, trial_idx: int,
                   block_def: dict, **kwargs) -> dict:
-        word, ink_color, trial_type = trial_data
+        word, ink_color, trial_type, iti_dur = trial_data
 
         fix_dur = self.design.get('fixation_duration', 0.5)
         stim_dur = self.design.get('stim_duration', 1.2)
-        iti_dur = self.design.get('iti_duration', 0.3)
 
         correct_key = self._color_to_key.get(ink_color, '')
         self.flush_keyboard()
@@ -287,19 +423,23 @@ class StroopTask(BaseTask):
         response_key = None
         response_color = None
 
-        # ── Fixation 500ms ───────────────────────────────────────────
+        # ── Phase 1: Fixation ────────────────────────────────────────
         self._fixation.draw()
+        self._draw_indicators()
         self.win.flip()
-        deadline = self.clock.time + fix_dur
+        fix_onset = self.clock.time
+        deadline = fix_onset + fix_dur
         while self.clock.time < deadline:
             self._fixation.draw()
+            self._draw_indicators()
             self.win.flip()
             self.get_keys(key_list=[])
 
-        # ── Colored word 1200ms ──────────────────────────────────────
+        # ── Phase 2: Colored word ────────────────────────────────────
         self._word_stim.text = word
         self._word_stim.color = self._color_rgb[ink_color]
         self._word_stim.draw()
+        self._draw_indicators()
         self.win.flip()
         stim_onset = self.clock.time
 
@@ -329,10 +469,12 @@ class StroopTask(BaseTask):
             else:
                 self.get_keys(key_list=[])
             self._word_stim.draw()
+            self._draw_indicators()
             self.win.flip()
 
-        # ── ITI 300ms ────────────────────────────────────────────────
+        # ── Phase 3: ITI ─────────────────────────────────────────────
         self._fixation.draw()
+        self._draw_indicators()
         self.win.flip()
         deadline = self.clock.time + iti_dur
         while self.clock.time < deadline:
@@ -352,13 +494,16 @@ class StroopTask(BaseTask):
             else:
                 self.get_keys(key_list=[])
             self._fixation.draw()
+            self._draw_indicators()
             self.win.flip()
 
         is_correct = (response_color == ink_color) if responded else False
 
+        # ── Record ───────────────────────────────────────────────────
         record = self._base_record(block_idx, trial_idx, block_def)
         record.update({
             'response_mode': self._response_mode,
+            'paradigm': self.design.get('paradigm', 'block'),
             'block_condition': block_def['condition'],
             'n_trials_in_block': block_def['n_trials'],
             'word': word,
@@ -371,12 +516,14 @@ class StroopTask(BaseTask):
             'response_color': response_color or '',
             'rt': round(rt, 4) if rt is not None else -1,
             'is_correct': int(is_correct) if not self._is_vocal else -1,
-            'is_error': int(responded and not is_correct) if not self._is_vocal else -1,
+            'is_error': (int(responded and not is_correct)
+                         if not self._is_vocal else -1),
             'is_miss': int(not responded) if not self._is_vocal else -1,
+            'fixation_onset': round(fix_onset, 4),
             'stim_onset': round(stim_onset, 4),
             'fixation_duration': fix_dur,
             'stim_duration': stim_dur,
-            'iti_duration': iti_dur,
+            'iti_duration': round(iti_dur, 4),
         })
 
         self._print_trial(
@@ -386,25 +533,27 @@ class StroopTask(BaseTask):
         return record
 
     # ═════════════════════════════════════════════════════════════════
-    # FINISH — stop mic
+    # FINISH — stop mic, write sync sidecar
     # ═════════════════════════════════════════════════════════════════
 
-    def _finish(self) -> 'Path | None':
+    def _finish(self):
         if self._mic is not None and self._mic.is_recording:
-            wav_path = self._mic.stop(self.clock)
+            self._mic.stop(self.clock)
             sync = self._mic.get_sync_info()
-            self.logger.ok(
-                f"Mic sync: start={sync['mic_start_time']:.3f}s "
-                f"stop={sync['mic_stop_time']:.3f}s "
-                f"dur={sync['mic_duration']:.1f}s"
-            )
+            if sync.get('mic_duration'):
+                self.logger.ok(
+                    f"Mic sync: start={sync['mic_start_time']:.3f}s "
+                    f"stop={sync['mic_stop_time']:.3f}s "
+                    f"dur={sync['mic_duration']:.1f}s"
+                )
             try:
                 import json
                 sync_path = (
                     self.settings.task_dir(self.TASK_NAME)
-                    / self.settings.output_filename(self.TASK_NAME, 'audio_sync')
+                    / self.settings.output_filename(
+                        self.TASK_NAME, 'audio_sync')
                 ).with_suffix('.json')
-                with open(sync_path, 'w') as f:
+                with open(sync_path, 'w', encoding='utf-8') as f:
                     json.dump(sync, f, indent=2, default=str)
                 self.logger.ok(f"Audio sync saved: {sync_path.name}")
             except Exception as e:
@@ -421,14 +570,11 @@ class StroopTask(BaseTask):
                      rt, onset, is_vocal):
         tt = ttype[:3].upper()
         if is_vocal:
-            tag, sym = 'VOC ', '~'
-            rt_s = "    - "
+            tag, sym, rt_s = 'VOC ', '~', "    - "
         elif not responded:
-            tag, sym = 'MISS', SYM_ERR
-            rt_s = "    - "
+            tag, sym, rt_s = 'MISS', SYM_ERR, "    - "
         elif correct:
-            tag, sym = 'OK  ', SYM_OK
-            rt_s = f"{rt * 1000:5.0f}ms"
+            tag, sym, rt_s = 'OK  ', SYM_OK, f"{rt * 1000:5.0f}ms"
         else:
             tag, sym = 'ERR ', SYM_ERR
             rt_s = f"{rt * 1000:5.0f}ms" if rt and rt > 0 else "    - "
@@ -444,25 +590,33 @@ class StroopTask(BaseTask):
 
         total = len(records)
 
+        # ── Vocal: no behavioural scoring online ─────────────────────
         if self._is_vocal:
             print(f"\n{'=' * 60}")
             print(f"  STROOP VOCAL - {total} essais enregistres")
-            print(f"  Mode : reponse vocale (RT a extraire offline)")
+            print(f"  RT a extraire offline depuis l'audio")
             if self._mic:
-                sync = self._mic.get_sync_info()
-                if sync['mic_duration']:
-                    print(f"  Audio : {sync['mic_duration']:.1f}s enregistrees")
-                print(f"  Fichier : {sync['mic_file']}")
+                s = self._mic.get_sync_info()
+                if s.get('mic_duration'):
+                    print(f"  Audio : {s['mic_duration']:.1f}s")
+                print(f"  Fichier : {s.get('mic_file', '-')}")
+            by_type = defaultdict(int)
+            for r in records:
+                by_type[r['trial_type']] += 1
+            print(f"  {'-' * 54}")
+            for tt in ['congruent', 'incongruent', 'neutral']:
+                if by_type[tt]:
+                    print(f"  {tt:12s}: {by_type[tt]:3d} essais")
             print(f"{'=' * 60}\n")
             return
 
+        # ── Manual ───────────────────────────────────────────────────
         correct = sum(r['is_correct'] for r in records)
         errors = sum(r.get('is_error', 0) for r in records)
         misses = sum(r.get('is_miss', 0) for r in records)
 
         print(f"\n{'=' * 60}")
-        print(f"  STROOP MANUEL - {correct}/{total} "
-              f"({100 * correct / total:.1f}%)")
+        print(f"  STROOP - {correct}/{total} ({100 * correct / total:.1f}%)")
         print(f"  Correct={correct}  Erreurs={errors}  Miss={misses}")
         print(f"  {'-' * 54}")
 
@@ -478,17 +632,16 @@ class StroopTask(BaseTask):
             n = len(recs)
             acc = 100 * sum(r['is_correct'] for r in recs) / n
             rts = [r['rt'] for r in recs if r['rt'] > 0 and r['is_correct']]
-            m = sum(rts) / len(rts) if rts else 0
-            rt_by[tt] = m
-            rts_sorted = sorted(rts)
-            if rts_sorted:
-                mid = len(rts_sorted) // 2
-                median = (rts_sorted[mid] if len(rts_sorted) % 2
-                          else (rts_sorted[mid - 1] + rts_sorted[mid]) / 2)
-                med_s = f"{median * 1000:.0f}ms"
+            mean = sum(rts) / len(rts) if rts else 0
+            rt_by[tt] = mean
+            if rts:
+                s = sorted(rts)
+                mid = len(s) // 2
+                med = s[mid] if len(s) % 2 else (s[mid - 1] + s[mid]) / 2
+                med_s = f"{med * 1000:.0f}ms"
             else:
                 med_s = "-"
-            mean_s = f"{m * 1000:.0f}ms" if rts else "-"
+            mean_s = f"{mean * 1000:.0f}ms" if rts else "-"
             err = sum(r.get('is_error', 0) for r in recs)
             mis = sum(r.get('is_miss', 0) for r in recs)
             print(
@@ -502,11 +655,11 @@ class StroopTask(BaseTask):
         neu = rt_by.get('neutral', 0)
         print(f"  {'-' * 54}")
         if inc > 0 and con > 0:
-            print(f"  Interference (INC-CON): {(inc-con)*1000:+.0f}ms")
+            print(f"  Interference (INC-CON): {(inc - con) * 1000:+.0f}ms")
         if inc > 0 and neu > 0:
-            print(f"  Interference (INC-NEU): {(inc-neu)*1000:+.0f}ms")
+            print(f"  Interference (INC-NEU): {(inc - neu) * 1000:+.0f}ms")
         if neu > 0 and con > 0:
-            print(f"  Facilitation (CON-NEU): {(con-neu)*1000:+.0f}ms")
+            print(f"  Facilitation (CON-NEU): {(con - neu) * 1000:+.0f}ms")
 
         by_ink = defaultdict(list)
         for r in records:
@@ -517,8 +670,9 @@ class StroopTask(BaseTask):
                 recs = by_ink[c]
                 n = len(recs)
                 acc = 100 * sum(r['is_correct'] for r in recs) / n
-                rts = [r['rt'] for r in recs if r['rt'] > 0 and r['is_correct']]
-                rt_s = f"{sum(rts)/len(rts)*1000:.0f}ms" if rts else "-"
+                rts = [r['rt'] for r in recs
+                       if r['rt'] > 0 and r['is_correct']]
+                rt_s = f"{sum(rts) / len(rts) * 1000:.0f}ms" if rts else "-"
                 print(f"  ink={c:6s}: {acc:5.1f}% ({n}) | RT={rt_s}")
 
         print(f"{'=' * 60}\n")
