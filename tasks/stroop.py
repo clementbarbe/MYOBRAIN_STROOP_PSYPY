@@ -1,10 +1,23 @@
 """
 Stroop Color-Word Task (French) — manual response.
 
-Response:
-    3 colored circles at the bottom of the screen (no text) indicate
-    the spatial order of the response buttons.
-    Buttons: left = ROUGE, down = BLEU, right = VERT.
+COLOR GUIDE VISIBILITY RULE
+---------------------------
+The 3 colored circles (response guide) are visible ONLY during:
+    - the ITI following a stimulus
+    - the rest periods between blocks
+
+They are ALWAYS hidden during:
+    - the pre-stimulus fixation
+    - the stimulus presentation itself
+    - the last `indicator_hide_lead` seconds before any stimulus onset
+
+This guarantees the guide is never on screen when the participant is
+preparing or executing a colour decision, avoiding any visual priming
+of the response mapping.
+
+Because the projected next-stimulus time is recomputed on every frame,
+the rule holds for both fixed-ITI (block) and jittered-ITI (event) designs.
 
 Stimuli:
     Congruent   : ROUGE in red, BLEU in blue, VERT in green
@@ -100,8 +113,18 @@ class StroopTask(BaseTask):
         self._key_to_color = {v: k for k, v in self._color_to_key.items()}
         self._valid_keys = list(self._color_to_key.values())
 
-        # ── Colored circle indicators (no text) ──────────────────────
+        # ── Colored circle guide ─────────────────────────────────────
         self._indicators = []
+        self._hide_lead = float(
+            self.task_config.get('indicator_hide_lead', 2.0)
+        )
+        # Absolute clock time of the next stimulus onset.
+        # None  -> no upcoming stimulus (guide may stay visible)
+        # float -> guide hides when (value - now) <= _hide_lead
+        self._next_stim_time: float | None = None
+        # Master switch used to force the guide off (final rest, etc.)
+        self._guide_enabled = True
+
         if self.task_config.get('show_indicators', True):
             radius = self.task_config.get('indicator_radius', 0.028)
             ind_y = self.task_config.get('indicator_y', -0.82)
@@ -120,27 +143,103 @@ class StroopTask(BaseTask):
                     pos=(x0 + i * spacing, ind_y),
                     edges=64,
                 ))
+            self._log_guide_visibility()
 
         self._ttl = self.task_config.get('ttl_codes', {})
 
-    # ── Drawing helpers ──────────────────────────────────────────────
+    def _log_guide_visibility(self) -> None:
+        """Report when the colour guide will actually be on screen."""
+        fix = self.design.get('fixation_duration', 0.5)
+        rest = self.design.get('rest_duration', 7.0)
+        paradigm = self.design.get('paradigm', 'block')
 
-    def _draw_indicators(self) -> None:
-        """Draw the 3 colored circles at the bottom of the screen."""
-        for c in self._indicators:
-            c.draw()
+        if paradigm == 'event':
+            iti_min = self.design.get('iti_min', 1.5)
+            iti_max = self.design.get('iti_max', 4.5)
+            vis_min = max(0.0, iti_min + fix - self._hide_lead)
+            vis_max = max(0.0, iti_max + fix - self._hide_lead)
+            iti_txt = f"ITI: {vis_min:.1f}-{vis_max:.1f}s visible"
+        else:
+            iti = self.design.get('iti_duration', 0.3)
+            vis = max(0.0, iti + fix - self._hide_lead)
+            iti_txt = (
+                f"ITI: {vis:.1f}s visible"
+                if vis > 0 else "ITI: jamais visible (fenetre trop courte)"
+            )
+
+        rest_vis = max(0.0, rest - self._hide_lead - fix)
+        self.logger.log(
+            f"Guide couleur | hide_lead={self._hide_lead}s | "
+            f"{iti_txt} | Rest: {rest_vis:.1f}s visible"
+        )
+
+    # ═════════════════════════════════════════════════════════════════
+    # GUIDE DRAWING
+    # ═════════════════════════════════════════════════════════════════
+
+    def _guide_visible(self) -> bool:
+        """
+        Decide whether the colour guide should be drawn on this frame.
+
+        Returns False if:
+            - the guide is disabled or not configured
+            - a stimulus is due in less than `_hide_lead` seconds
+        """
+        if not self._indicators or not self._guide_enabled:
+            return False
+        if self._next_stim_time is None:
+            return True
+        return (self._next_stim_time - self.clock.time) > self._hide_lead
+
+    def _draw_guide(self) -> None:
+        """Draw the 3 colored circles if the visibility rule allows it."""
+        if self._guide_visible():
+            for c in self._indicators:
+                c.draw()
+
+    # ═════════════════════════════════════════════════════════════════
+    # DISPLAY OVERRIDES
+    # ═════════════════════════════════════════════════════════════════
 
     def show_fixation(self, duration: float) -> None:
-        """Override: keep colored indicators visible during rest/fixation."""
-        self._fixation.draw()
-        self._draw_indicators()
-        self.win.flip()
+        """
+        Fixation with guide handled by the visibility rule.
+
+        Used by the base class for rest periods and pre-block fixation.
+        """
         deadline = self.clock.time + duration
+        self._fixation.draw()
+        self._draw_guide()
+        self.win.flip()
         while self.clock.time < deadline:
             self._fixation.draw()
-            self._draw_indicators()
+            self._draw_guide()
             self.win.flip()
             self.get_keys(key_list=[])
+
+    def run_rest(self, label: str = '', duration: float | None = None) -> None:
+        """
+        Rest period. The guide is shown, then hidden `_hide_lead` seconds
+        before the first stimulus of the upcoming block.
+        """
+        dur = (duration if duration is not None
+               else self.design.get('rest_duration', 7.0))
+
+        if label == 'final':
+            # No stimulus will follow — keep the screen clean.
+            self._guide_enabled = False
+            self._next_stim_time = None
+        else:
+            instr = self.design.get('instruction_duration', 0.0)
+            pre_fix = self.design.get('pre_block_fixation', 0.0)
+            fix = self.design.get('fixation_duration', 0.5)
+            self._next_stim_time = (
+                self.clock.time + dur + instr + pre_fix + fix
+            )
+
+        super().run_rest(label=label, duration=dur)
+
+        self._next_stim_time = None
 
     # ═════════════════════════════════════════════════════════════════
     # INSTRUCTIONS
@@ -162,8 +261,9 @@ class StroopTask(BaseTask):
             f"  ROUGE  ->  [{k_r}]  (index)\n"
             f"  BLEU   ->  [{k_b}]  (majeur)\n"
             f"  VERT   ->  [{k_v}]  (annulaire)\n\n"
-            f"Les 3 cercles colores en bas de l'ecran\n"
-            f"rappellent l'ordre des boutons.\n\n"
+            f"Un rappel (3 cercles colores) apparait\n"
+            f"entre les essais et pendant les pauses.\n"
+            f"Il disparait avant chaque mot.\n\n"
             f"Repondez le plus VITE et PRECISEMENT possible.\n\n"
             f"Appuyez sur une touche pour continuer..."
         )
@@ -368,24 +468,25 @@ class StroopTask(BaseTask):
         rt = None
         response_key = None
         response_color = None
+        guide_shown = False
 
-        # ── Phase 1: Fixation ────────────────────────────────────────
+        # ── Phase 1: Fixation — guide always hidden ──────────────────
+        # The stimulus is imminent (fix_dur < hide_lead in every design),
+        # so we force the guide off for the whole fixation window.
+        self._next_stim_time = self.clock.time + fix_dur
         self._fixation.draw()
-        self._draw_indicators()
         self.win.flip()
         fix_onset = self.clock.time
         deadline = fix_onset + fix_dur
         while self.clock.time < deadline:
             self._fixation.draw()
-            self._draw_indicators()
             self.win.flip()
             self.get_keys(key_list=[])
 
-        # ── Phase 2: Colored word ────────────────────────────────────
+        # ── Phase 2: Colored word — guide always hidden ──────────────
         self._word_stim.text = word
         self._word_stim.color = self._color_rgb[ink_color]
         self._word_stim.draw()
-        self._draw_indicators()
         self.win.flip()
         stim_onset = self.clock.time
 
@@ -413,15 +514,26 @@ class StroopTask(BaseTask):
                     if ttl_r:
                         self.hardware.send_trigger(ttl_r)
             self._word_stim.draw()
-            self._draw_indicators()
             self.win.flip()
 
-        # ── Phase 3: ITI ─────────────────────────────────────────────
+        # ── Phase 3: ITI — guide visible under the hide_lead rule ────
+        iti_onset = self.clock.time
+        iti_end = iti_onset + iti_dur
+        is_last = (trial_idx >= block_def['n_trials'] - 1)
+
+        if is_last:
+            # A rest period follows; run_rest will set its own estimate.
+            self._next_stim_time = None
+        else:
+            self._next_stim_time = iti_end + fix_dur
+
         self._fixation.draw()
-        self._draw_indicators()
+        if self._guide_visible():
+            guide_shown = True
+            self._draw_guide()
         self.win.flip()
-        deadline = self.clock.time + iti_dur
-        while self.clock.time < deadline:
+
+        while self.clock.time < iti_end:
             if not responded:
                 keys = self.get_keys(key_list=self._valid_keys)
                 if keys:
@@ -435,9 +547,15 @@ class StroopTask(BaseTask):
                     )
                     if ttl_r:
                         self.hardware.send_trigger(ttl_r)
+            else:
+                self.get_keys(key_list=[])
             self._fixation.draw()
-            self._draw_indicators()
+            if self._guide_visible():
+                guide_shown = True
+                self._draw_guide()
             self.win.flip()
+
+        self._next_stim_time = None
 
         is_correct = (response_color == ink_color) if responded else False
 
@@ -454,6 +572,7 @@ class StroopTask(BaseTask):
             'correct_color': ink_color,
             'responded': int(responded),
             'response_key': response_key or '',
+            'response_direction': response_color or '',
             'response_color': response_color or '',
             'rt': round(rt, 4) if rt is not None else -1,
             'is_correct': int(is_correct),
@@ -461,9 +580,11 @@ class StroopTask(BaseTask):
             'is_miss': int(not responded),
             'fixation_onset': round(fix_onset, 4),
             'stim_onset': round(stim_onset, 4),
+            'iti_onset': round(iti_onset, 4),
             'fixation_duration': fix_dur,
             'stim_duration': stim_dur,
             'iti_duration': round(iti_dur, 4),
+            'guide_shown_in_iti': int(guide_shown),
         })
 
         self._print_trial(
@@ -504,6 +625,9 @@ class StroopTask(BaseTask):
         print(f"\n{'=' * 60}")
         print(f"  STROOP - {correct}/{total} ({100 * correct / total:.1f}%)")
         print(f"  Correct={correct}  Erreurs={errors}  Miss={misses}")
+
+        n_guide = sum(r.get('guide_shown_in_iti', 0) for r in records)
+        print(f"  Guide couleur affiche pendant {n_guide}/{total} ITI")
         print(f"  {'-' * 54}")
 
         by_type = defaultdict(list)

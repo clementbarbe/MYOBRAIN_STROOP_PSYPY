@@ -229,6 +229,12 @@ _BUILTIN_DEFAULTS: dict[str, dict] = {
             'IDEE', 'ACTE', 'FAIT', 'AVIS', 'SENS', 'ETAT',
             'CAUSE', 'ORDRE', 'THEME', 'DEBUT', 'TERME', 'DROIT',
         ],
+        'show_indicators': True,
+        'indicator_hide_lead': 2.0,
+        'indicator_radius': 0.028,
+        'indicator_y': -0.82,
+        'indicator_spacing': 0.22,
+        'indicator_order': ['rouge', 'bleu', 'vert'],
         'incongruent_pairs': [
             {'word': 'ROUGE', 'ink': 'bleu'}, {'word': 'ROUGE', 'ink': 'vert'},
             {'word': 'BLEU', 'ink': 'rouge'}, {'word': 'BLEU', 'ink': 'vert'},

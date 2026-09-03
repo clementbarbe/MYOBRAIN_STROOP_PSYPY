@@ -208,7 +208,8 @@ class StroopPanel(QWidget):
         info = QLabel(
             "Couleurs : ROUGE  BLEU  VERT\n"
             "Neutre : mots abstraits (IDEE, CAUSE, ORDRE...)\n"
-            "3 cercles colores en bas de l'ecran, sans texte\n"
+            "Guide (3 cercles) : ITI + pauses uniquement,\n"
+            "masque 2s avant chaque stimulus\n"
             "Touches PC : gauche  bas  droite"
         )
         info.setStyleSheet("color: #808080; font-size: 11px; padding: 4px;")
