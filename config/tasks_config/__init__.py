@@ -234,7 +234,6 @@ _BUILTIN_DEFAULTS: dict[str, dict] = {
             {'word': 'BLEU', 'ink': 'rouge'}, {'word': 'BLEU', 'ink': 'vert'},
             {'word': 'VERT', 'ink': 'rouge'}, {'word': 'VERT', 'ink': 'bleu'},
         ],
-        'response_mode': 'manual',
         'response_keys_pc': {'rouge': 'left', 'bleu': 'down', 'vert': 'right'},
         'response_keys_fmri': {'rouge': 'b', 'bleu': 'y', 'vert': 'g'},
         'show_indicators': True,
@@ -242,7 +241,6 @@ _BUILTIN_DEFAULTS: dict[str, dict] = {
         'indicator_y': -0.82,
         'indicator_spacing': 0.22,
         'indicator_order': ['rouge', 'bleu', 'vert'],
-        'mic_sample_rate': 44100,
         'ttl_codes': {
             'stim_congruent': 110, 'stim_incongruent': 111,
             'stim_neutral': 112,

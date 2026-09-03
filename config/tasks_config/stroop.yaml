@@ -16,22 +16,22 @@ color_words:
   vert:  "VERT"
 
 # ── Neutral words ────────────────────────────────────────────────────
-# Mots abstraits français, sans association couleur ni representation
+# Mots abstraits francais, sans association couleur ni representation
 # visuelle. Longueur appariee aux mots couleurs (4-5 lettres).
 # Le sujet doit les lire (traitement lexical) sans conflit chromatique.
 neutral_words:
-  - IDEE      # 4
-  - ACTE      # 4
-  - FAIT      # 4
-  - AVIS      # 4
-  - SENS      # 4
-  - ETAT      # 4
-  - CAUSE     # 5
-  - ORDRE     # 5
-  - THEME     # 5
-  - DEBUT     # 5
-  - TERME     # 5
-  - DROIT     # 5
+  - IDEE
+  - ACTE
+  - FAIT
+  - AVIS
+  - SENS
+  - ETAT
+  - CAUSE
+  - ORDRE
+  - THEME
+  - DEBUT
+  - TERME
+  - DROIT
 
 incongruent_pairs:
   - { word: "ROUGE", ink: "bleu" }
@@ -40,9 +40,6 @@ incongruent_pairs:
   - { word: "BLEU",  ink: "vert" }
   - { word: "VERT",  ink: "rouge" }
   - { word: "VERT",  ink: "bleu" }
-
-# ── Response mode ────────────────────────────────────────────────────
-response_mode: manual        # "manual" | "vocal"
 
 response_keys_pc:
   rouge: "left"
@@ -60,8 +57,6 @@ indicator_radius: 0.028
 indicator_y: -0.82
 indicator_spacing: 0.22
 indicator_order: [rouge, bleu, vert]
-
-mic_sample_rate: 44100
 
 ttl_codes:
   stim_congruent: 110
