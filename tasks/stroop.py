@@ -1,40 +1,28 @@
 """
 Stroop Color-Word Task (French) — manual response.
 
-COLOR GUIDE VISIBILITY RULE
----------------------------
-The 3 colored circles (response guide) are visible ONLY during:
-    - the ITI following a stimulus
-    - the rest periods between blocks
+SEQUENCE CONSTRUCTION
+---------------------
+The whole run is built BEFORE the scanner trigger, in three steps:
 
-They are ALWAYS hidden during:
-    - the pre-stimulus fixation
-    - the stimulus presentation itself
-    - the last `indicator_hide_lead` seconds before any stimulus onset
+ 1. Run-level balanced pools
+       ink colours .............. equal counts across the run (+/-1)
+       incongruent word/ink ..... the 6 pairs equally used (+/-1)
+       neutral words ............ the 12 abstract words equally used (+/-1)
+ 2. Deal the pools to the blocks
+ 3. Enforce ordering constraints inside each block
+       no more than 2 consecutive identical ink colours
+       no more than 2 consecutive identical words
+       event design: never 2 consecutive trials of the same type
 
-This guarantees the guide is never on screen when the participant is
-preparing or executing a colour decision, avoiding any visual priming
-of the response mapping.
+Every constraint is then re-checked by tasks.utils.validation and the
+report is written to <stem>_design.json. Nothing is generated during
+the run itself, so no CPU spike can perturb the timing.
 
-Because the projected next-stimulus time is recomputed on every frame,
-the rule holds for both fixed-ITI (block) and jittered-ITI (event) designs.
-
-Stimuli:
-    Congruent   : ROUGE in red, BLEU in blue, VERT in green
-    Incongruent : ROUGE in blue, ROUGE in green, BLEU in red ... (6 pairs)
-    Neutral     : abstract French words (IDEE, CAUSE, ORDRE...) in color
-                  -> forces lexical reading without chromatic conflict
-
-Trial timing:
-    Block designs : 500ms fixation + 1200ms word + 300ms ITI = 2.0s
-    Event design  : 500ms fixation + 1200ms word + jittered ITI (1.5-4.5s)
-
-Randomisation (within block):
-    - Ink colors balanced
-    - No >2 consecutive same ink color
-    - No >2 consecutive same word
-    - Incongruent blocks: 6 word/ink pairs balanced
-    - Event design: never 2 consecutive trials of the same type
+COLOR GUIDE
+-----------
+The 3 coloured circles appear only during the ITI and the rest periods,
+and always vanish `indicator_hide_lead` seconds before a stimulus.
 """
 
 from __future__ import annotations
@@ -46,8 +34,17 @@ from psychopy import visual
 
 from tasks.base import BaseTask
 from tasks.registry import register_task
-from tasks.utils.sequence import desequence
+from tasks.utils.pools import (
+    balanced_pool, deal_to_blocks, enforce_max_run,
+    interleave_no_repeat, counts, max_run_length,
+)
+from tasks.utils.validation import (
+    ValidationReport, check_balanced, check_max_run, check_exact,
+)
 from utils.console import SYM_OK, SYM_ERR
+
+MAX_SAME_COLOR = 2
+MAX_SAME_WORD = 2
 
 
 @register_task('stroop')
@@ -55,13 +52,15 @@ class StroopTask(BaseTask):
     """Stroop Color-Word fMRI task."""
 
     TASK_NAME = 'stroop'
+    PREGENERATE_TRIALS = True          # build everything before the trigger
 
     # ═════════════════════════════════════════════════════════════════
     # SETUP
     # ═════════════════════════════════════════════════════════════════
 
     def _setup_stimuli(self) -> None:
-        stim_cfg = self.task_config.get('stimulus', {})
+        cfg = self.task_config
+        stim_cfg = cfg.get('stimulus', {})
 
         self._word_stim = visual.TextStim(
             self.win, text='', color='white',
@@ -69,122 +68,279 @@ class StroopTask(BaseTask):
             pos=(0, 0), bold=True, font='monospace',
         )
 
-        # ── Colors ───────────────────────────────────────────────────
-        colors_cfg = self.task_config.get('colors', {})
+        colors = cfg.get('colors', {})
         self._color_rgb = {
-            'rouge': colors_cfg.get('rouge', [1.0, -1.0, -1.0]),
-            'bleu':  colors_cfg.get('bleu',  [-1.0, -1.0, 1.0]),
-            'vert':  colors_cfg.get('vert',  [-1.0, 0.8, -1.0]),
+            'rouge': colors.get('rouge', [1.0, -1.0, -1.0]),
+            'bleu':  colors.get('bleu',  [-1.0, -1.0, 1.0]),
+            'vert':  colors.get('vert',  [-1.0, 0.8, -1.0]),
         }
         self._ink_colors = list(self._color_rgb.keys())
 
-        # ── Words ────────────────────────────────────────────────────
-        cw = self.task_config.get('color_words', {})
+        cw = cfg.get('color_words', {})
         self._color_words = {
             'rouge': cw.get('rouge', 'ROUGE'),
             'bleu':  cw.get('bleu',  'BLEU'),
             'vert':  cw.get('vert',  'VERT'),
         }
-        self._neutral_words = self.task_config.get(
-            'neutral_words',
-            ['IDEE', 'ACTE', 'FAIT', 'AVIS', 'SENS', 'ETAT',
-             'CAUSE', 'ORDRE', 'THEME', 'DEBUT', 'TERME', 'DROIT'],
+        self._neutral_words = list(cfg.get('neutral_words', [
+            'IDEE', 'ACTE', 'FAIT', 'AVIS', 'SENS', 'ETAT',
+            'CAUSE', 'ORDRE', 'THEME', 'DEBUT', 'TERME', 'DROIT',
+        ]))
+
+        pairs = cfg.get('incongruent_pairs', [])
+        self._inc_pairs = (
+            [(p['word'], p['ink']) for p in pairs] if pairs else
+            [(self._color_words[w], i)
+             for w in self._ink_colors
+             for i in self._ink_colors if w != i]
         )
 
-        pairs_cfg = self.task_config.get('incongruent_pairs', [])
-        if pairs_cfg:
-            self._inc_pairs = [(p['word'], p['ink']) for p in pairs_cfg]
-        else:
-            self._inc_pairs = [
-                (self._color_words[w], i)
-                for w in self._ink_colors
-                for i in self._ink_colors if w != i
-            ]
-
-        # ── Response keys ────────────────────────────────────────────
         key_src = ('response_keys_fmri' if self.settings.mode == 'fmri'
                    else 'response_keys_pc')
-        keys_cfg = self.task_config.get(key_src, {})
+        keys = cfg.get(key_src, {})
         self._color_to_key = {
-            'rouge': keys_cfg.get('rouge', 'left'),
-            'bleu':  keys_cfg.get('bleu',  'down'),
-            'vert':  keys_cfg.get('vert',  'right'),
+            'rouge': keys.get('rouge', 'left'),
+            'bleu':  keys.get('bleu',  'down'),
+            'vert':  keys.get('vert',  'right'),
         }
         self._key_to_color = {v: k for k, v in self._color_to_key.items()}
         self._valid_keys = list(self._color_to_key.values())
 
-        # ── Colored circle guide ─────────────────────────────────────
+        # ── Colour guide ─────────────────────────────────────────────
         self._indicators = []
-        self._hide_lead = float(
-            self.task_config.get('indicator_hide_lead', 2.0)
-        )
-        # Absolute clock time of the next stimulus onset.
-        # None  -> no upcoming stimulus (guide may stay visible)
-        # float -> guide hides when (value - now) <= _hide_lead
+        self._hide_lead = float(cfg.get('indicator_hide_lead', 2.0))
         self._next_stim_time: float | None = None
-        # Master switch used to force the guide off (final rest, etc.)
         self._guide_enabled = True
 
-        if self.task_config.get('show_indicators', True):
-            radius = self.task_config.get('indicator_radius', 0.028)
-            ind_y = self.task_config.get('indicator_y', -0.82)
-            spacing = self.task_config.get('indicator_spacing', 0.22)
-            order = self.task_config.get(
-                'indicator_order', ['rouge', 'bleu', 'vert']
-            )
-            n = len(order)
-            x0 = -spacing * (n - 1) / 2.0
+        if cfg.get('show_indicators', True):
+            r = cfg.get('indicator_radius', 0.028)
+            y = cfg.get('indicator_y', -0.82)
+            sp = cfg.get('indicator_spacing', 0.22)
+            order = cfg.get('indicator_order', ['rouge', 'bleu', 'vert'])
+            x0 = -sp * (len(order) - 1) / 2.0
             for i, c in enumerate(order):
                 self._indicators.append(visual.Circle(
-                    self.win,
-                    radius=radius,
+                    self.win, radius=r, edges=64,
                     fillColor=self._color_rgb[c],
                     lineColor=self._color_rgb[c],
-                    pos=(x0 + i * spacing, ind_y),
-                    edges=64,
+                    pos=(x0 + i * sp, y),
                 ))
-            self._log_guide_visibility()
 
-        self._ttl = self.task_config.get('ttl_codes', {})
+        self._ttl = cfg.get('ttl_codes', {})
 
-    def _log_guide_visibility(self) -> None:
-        """Report when the colour guide will actually be on screen."""
-        fix = self.design.get('fixation_duration', 0.5)
-        rest = self.design.get('rest_duration', 7.0)
+    # ═════════════════════════════════════════════════════════════════
+    # SEQUENCE CONSTRUCTION — run level, before the trigger
+    # ═════════════════════════════════════════════════════════════════
+
+    def build_all_trials(self) -> list[list]:
+        """
+        Build the complete run.
+
+        Returns one list of trial tuples per block:
+            (word, ink_color, trial_type, iti)
+        """
+        rng = self._rng
         paradigm = self.design.get('paradigm', 'block')
 
         if paradigm == 'event':
-            iti_min = self.design.get('iti_min', 1.5)
-            iti_max = self.design.get('iti_max', 4.5)
-            vis_min = max(0.0, iti_min + fix - self._hide_lead)
-            vis_max = max(0.0, iti_max + fix - self._hide_lead)
-            iti_txt = f"ITI: {vis_min:.1f}-{vis_max:.1f}s visible"
+            blocks = self._build_event(rng)
         else:
-            iti = self.design.get('iti_duration', 0.3)
-            vis = max(0.0, iti + fix - self._hide_lead)
-            iti_txt = (
-                f"ITI: {vis:.1f}s visible"
-                if vis > 0 else "ITI: jamais visible (fenetre trop courte)"
-            )
+            blocks = self._build_blocked(rng)
 
-        rest_vis = max(0.0, rest - self._hide_lead - fix)
-        self.logger.log(
-            f"Guide couleur | hide_lead={self._hide_lead}s | "
-            f"{iti_txt} | Rest: {rest_vis:.1f}s visible"
+        self._attach_itis(blocks, rng)
+        return blocks
+
+    # ── Blocked designs ──────────────────────────────────────────────
+
+    def _build_blocked(self, rng: random.Random) -> list[list]:
+        """One condition per block; pools balanced across the whole run."""
+        # Group block indices by condition
+        by_cond: dict[str, list[int]] = defaultdict(list)
+        for i, b in enumerate(self.block_sequence):
+            by_cond[b['condition']].append(i)
+
+        out: list[list] = [[] for _ in self.block_sequence]
+
+        for cond, idxs in by_cond.items():
+            sizes = [self.block_sequence[i]['n_trials'] for i in idxs]
+            total = sum(sizes)
+            pool = self._condition_pool(cond, total, rng)
+            for i, chunk in zip(idxs, deal_to_blocks(pool, sizes)):
+                out[i] = self._order_block(chunk, rng)
+
+        return out
+
+    def _condition_pool(self, cond: str, n: int,
+                        rng: random.Random) -> list:
+        """Balanced pool of (word, ink, type) for one condition."""
+        if cond == 'congruent':
+            inks = balanced_pool(self._ink_colors, n, rng)
+            return [(self._color_words[c], c, 'congruent') for c in inks]
+
+        if cond == 'incongruent':
+            pairs = balanced_pool(self._inc_pairs, n, rng)
+            return [(w, ink, 'incongruent') for (w, ink) in pairs]
+
+        if cond == 'neutral':
+            inks = balanced_pool(self._ink_colors, n, rng)
+            words = balanced_pool(self._neutral_words, n, rng)
+            rng.shuffle(words)
+            return [(w, c, 'neutral') for w, c in zip(words, inks)]
+
+        raise ValueError(f"Unknown condition '{cond}'")
+
+    def _order_block(self, trials: list, rng: random.Random) -> list:
+        """Apply the two run-length constraints inside a block."""
+        trials = list(trials)
+        rng.shuffle(trials)
+        enforce_max_run(trials, key=lambda t: t[1],
+                        max_run=MAX_SAME_COLOR, rng=rng)
+        enforce_max_run(trials, key=lambda t: t[0],
+                        max_run=MAX_SAME_WORD, rng=rng)
+        # Re-check colour: the word pass may have broken it
+        enforce_max_run(trials, key=lambda t: t[1],
+                        max_run=MAX_SAME_COLOR, rng=rng)
+        return trials
+
+    # ── Event-related design ─────────────────────────────────────────
+
+    def _build_event(self, rng: random.Random) -> list[list]:
+        """Single pseudo-block, all conditions interleaved."""
+        n = self.block_sequence[0]['n_trials']
+        per, rem = divmod(n, 3)
+        n_neu = per + (1 if rem > 0 else 0)
+        n_con = per + (1 if rem > 1 else 0)
+        n_inc = n - n_neu - n_con
+
+        trials = (
+            self._condition_pool('neutral', n_neu, rng)
+            + self._condition_pool('congruent', n_con, rng)
+            + self._condition_pool('incongruent', n_inc, rng)
         )
 
+        # Never two consecutive trials of the same type
+        trials = interleave_no_repeat(trials, key=lambda t: t[2], rng=rng)
+
+        # Then relax the colour runs, without breaking the type alternation
+        enforce_max_run(trials, key=lambda t: t[1],
+                        max_run=MAX_SAME_COLOR, rng=rng,
+                        protect=lambda t: t[2])
+        return [trials]
+
+    # ── ITIs ─────────────────────────────────────────────────────────
+
+    def _attach_itis(self, blocks: list[list], rng: random.Random) -> None:
+        """Append the ITI to every trial tuple, in place."""
+        if self.design.get('paradigm') == 'event':
+            lo = self.design.get('iti_min', 1.5)
+            hi = self.design.get('iti_max', 4.5)
+            for b, trials in enumerate(blocks):
+                # Stratified jitter: shuffled quantiles, mean guaranteed
+                n = len(trials)
+                steps = [lo + (hi - lo) * (i + 0.5) / n for i in range(n)]
+                rng.shuffle(steps)
+                blocks[b] = [
+                    (w, c, t, round(iti, 4))
+                    for (w, c, t), iti in zip(trials, steps)
+                ]
+        else:
+            iti = self.design.get('iti_duration', 0.3)
+            for b, trials in enumerate(blocks):
+                blocks[b] = [(w, c, t, iti) for (w, c, t) in trials]
+
     # ═════════════════════════════════════════════════════════════════
-    # GUIDE DRAWING
+    # VALIDATION
+    # ═════════════════════════════════════════════════════════════════
+
+    def validate_sequence(self, blocks: list[list]) -> ValidationReport:
+        """Verify balance and ordering; also fill the descriptive summary."""
+        rep = ValidationReport()
+        flat = [t for b in blocks for t in b]
+
+        words = [t[0] for t in flat]
+        inks = [t[1] for t in flat]
+        types = [t[2] for t in flat]
+
+        # ── Totals ───────────────────────────────────────────────────
+        expected = sum(b['n_trials'] for b in self.block_sequence)
+        check_exact(rep, 'total trial count', len(flat), expected)
+        check_exact(rep, 'block count', len(blocks), len(self.block_sequence))
+
+        # ── Run-level balance ────────────────────────────────────────
+        check_balanced(rep, 'trial types balanced (run)', types, tolerance=1)
+        check_balanced(rep, 'ink colours balanced (run)', inks, tolerance=1)
+
+        inc = [t for t in flat if t[2] == 'incongruent']
+        if inc:
+            check_balanced(rep, 'incongruent pairs balanced',
+                           [(t[0], t[1]) for t in inc], tolerance=1)
+        neu = [t for t in flat if t[2] == 'neutral']
+        if neu:
+            check_balanced(rep, 'neutral words balanced',
+                           [t[0] for t in neu], tolerance=1)
+
+        # ── Semantic correctness of each trial type ──────────────────
+        bad_con = [t for t in flat
+                   if t[2] == 'congruent' and t[0] != self._color_words[t[1]]]
+        check_exact(rep, 'congruent word==ink', len(bad_con), 0)
+
+        bad_inc = [t for t in flat
+                   if t[2] == 'incongruent' and t[0] == self._color_words[t[1]]]
+        check_exact(rep, 'incongruent word!=ink', len(bad_inc), 0)
+
+        color_set = set(self._color_words.values())
+        bad_neu = [t for t in flat if t[2] == 'neutral' and t[0] in color_set]
+        check_exact(rep, 'neutral words are non-colour', len(bad_neu), 0)
+
+        # ── Ordering, per block ──────────────────────────────────────
+        worst_c = max((max_run_length([t[1] for t in b]) for b in blocks),
+                      default=0)
+        worst_w = max((max_run_length([t[0] for t in b]) for b in blocks),
+                      default=0)
+        rep.add('max consecutive same ink (per block)',
+                worst_c <= MAX_SAME_COLOR,
+                f"{worst_c} (max {MAX_SAME_COLOR})")
+        rep.add('max consecutive same word (per block)',
+                worst_w <= MAX_SAME_WORD,
+                f"{worst_w} (max {MAX_SAME_WORD})")
+
+        if self.design.get('paradigm') == 'event':
+            check_max_run(rep, 'max consecutive same trial type',
+                          types, max_allowed=1)
+
+        # ── Per-block balance inside blocked designs ─────────────────
+        if self.design.get('paradigm') != 'event':
+            mono = all(len(set(t[2] for t in b)) == 1 for b in blocks if b)
+            rep.add('one condition per block', mono,
+                    'each block is pure' if mono else 'mixed block found')
+
+        # ── Descriptive summary for the sidecar ──────────────────────
+        rep.summary = {
+            'n_trials': len(flat),
+            'n_blocks': len(blocks),
+            'trials_per_block': [len(b) for b in blocks],
+            'trial_type_counts': counts(types),
+            'ink_colour_counts': counts(inks),
+            'word_counts': counts(words),
+            'incongruent_pair_counts': counts(
+                [f"{t[0]}/{t[1]}" for t in inc]) if inc else {},
+            'neutral_word_counts': counts(
+                [t[0] for t in neu]) if neu else {},
+            'max_consecutive_same_ink': worst_c,
+            'max_consecutive_same_word': worst_w,
+            'max_consecutive_same_type': max_run_length(types),
+            'iti_mean': round(
+                sum(t[3] for t in flat) / len(flat), 4) if flat else 0,
+            'iti_min': min((t[3] for t in flat), default=0),
+            'iti_max': max((t[3] for t in flat), default=0),
+        }
+        return rep
+
+    # ═════════════════════════════════════════════════════════════════
+    # GUIDE
     # ═════════════════════════════════════════════════════════════════
 
     def _guide_visible(self) -> bool:
-        """
-        Decide whether the colour guide should be drawn on this frame.
-
-        Returns False if:
-            - the guide is disabled or not configured
-            - a stimulus is due in less than `_hide_lead` seconds
-        """
         if not self._indicators or not self._guide_enabled:
             return False
         if self._next_stim_time is None:
@@ -192,21 +348,11 @@ class StroopTask(BaseTask):
         return (self._next_stim_time - self.clock.time) > self._hide_lead
 
     def _draw_guide(self) -> None:
-        """Draw the 3 colored circles if the visibility rule allows it."""
         if self._guide_visible():
             for c in self._indicators:
                 c.draw()
 
-    # ═════════════════════════════════════════════════════════════════
-    # DISPLAY OVERRIDES
-    # ═════════════════════════════════════════════════════════════════
-
     def show_fixation(self, duration: float) -> None:
-        """
-        Fixation with guide handled by the visibility rule.
-
-        Used by the base class for rest periods and pre-block fixation.
-        """
         deadline = self.clock.time + duration
         self._fixation.draw()
         self._draw_guide()
@@ -218,27 +364,19 @@ class StroopTask(BaseTask):
             self.get_keys(key_list=[])
 
     def run_rest(self, label: str = '', duration: float | None = None) -> None:
-        """
-        Rest period. The guide is shown, then hidden `_hide_lead` seconds
-        before the first stimulus of the upcoming block.
-        """
         dur = (duration if duration is not None
                else self.design.get('rest_duration', 7.0))
-
         if label == 'final':
-            # No stimulus will follow — keep the screen clean.
             self._guide_enabled = False
             self._next_stim_time = None
         else:
-            instr = self.design.get('instruction_duration', 0.0)
-            pre_fix = self.design.get('pre_block_fixation', 0.0)
-            fix = self.design.get('fixation_duration', 0.5)
             self._next_stim_time = (
-                self.clock.time + dur + instr + pre_fix + fix
+                self.clock.time + dur
+                + self.design.get('instruction_duration', 0.0)
+                + self.design.get('pre_block_fixation', 0.0)
+                + self.design.get('fixation_duration', 0.5)
             )
-
         super().run_rest(label=label, duration=dur)
-
         self._next_stim_time = None
 
     # ═════════════════════════════════════════════════════════════════
@@ -247,23 +385,20 @@ class StroopTask(BaseTask):
 
     def _get_instruction_text(self) -> str:
         total = sum(b.get('n_trials', 0) for b in self.block_sequence)
-        n_blocs = len(self.block_sequence)
         k_r = self._color_to_key['rouge'].upper()
         k_b = self._color_to_key['bleu'].upper()
         k_v = self._color_to_key['vert'].upper()
-
         return (
             f"Stroop — Denomination de couleur\n\n"
             f"Design : {self.design.get('name', '')}\n"
-            f"{n_blocs} bloc(s), {total} essais\n\n"
+            f"{len(self.block_sequence)} bloc(s), {total} essais\n\n"
             f"Repondez a la COULEUR DE L'ENCRE.\n"
             f"Ignorez ce que le mot dit !\n\n"
             f"  ROUGE  ->  [{k_r}]  (index)\n"
             f"  BLEU   ->  [{k_b}]  (majeur)\n"
             f"  VERT   ->  [{k_v}]  (annulaire)\n\n"
-            f"Un rappel (3 cercles colores) apparait\n"
-            f"entre les essais et pendant les pauses.\n"
-            f"Il disparait avant chaque mot.\n\n"
+            f"Un rappel (3 cercles colores) apparait entre\n"
+            f"les essais. Il disparait avant chaque mot.\n\n"
             f"Repondez le plus VITE et PRECISEMENT possible.\n\n"
             f"Appuyez sur une touche pour continuer..."
         )
@@ -272,186 +407,11 @@ class StroopTask(BaseTask):
                                block_def: dict) -> str | None:
         if self.design.get('instruction_duration', 0.0) <= 0:
             return None
-        n = len(self.block_sequence)
-        return (
-            f"Bloc {block_idx + 1}/{n}\n\n"
-            f"Nommez la COULEUR DE L'ENCRE"
-        )
+        return (f"Bloc {block_idx + 1}/{len(self.block_sequence)}\n\n"
+                f"Nommez la COULEUR DE L'ENCRE")
 
     # ═════════════════════════════════════════════════════════════════
-    # TRIAL GENERATION
-    # ═════════════════════════════════════════════════════════════════
-
-    def generate_trials(self, block_def: dict) -> list:
-        """
-        Return list of (word, ink_color, trial_type, iti) tuples.
-
-        Block designs use a fixed ITI.
-        Event design uses a jittered ITI per trial.
-        """
-        condition = block_def['condition']
-        n = block_def['n_trials']
-        paradigm = self.design.get('paradigm', 'block')
-
-        # ── Build trial content ──────────────────────────────────────
-        if condition == 'neutral':
-            trials = self._gen_neutral(n)
-        elif condition == 'congruent':
-            trials = self._gen_congruent(n)
-        elif condition == 'incongruent':
-            trials = self._gen_incongruent(n)
-        elif condition == 'mixed':
-            trials = self._gen_mixed(n)
-        else:
-            trials = self._gen_neutral(n)
-
-        # ── Order constraints ────────────────────────────────────────
-        if condition == 'mixed':
-            trials = self._no_repeat_type(trials)
-            trials = self._soft_desequence_color(trials, max_c=2)
-        else:
-            trials = self._double_desequence(trials, max_c=2)
-
-        # ── Attach ITIs ──────────────────────────────────────────────
-        if paradigm == 'event':
-            from tasks.utils.sequence import generate_jittered_isis
-            itis = generate_jittered_isis(
-                n,
-                self.design.get('iti_min', 1.5),
-                self.design.get('iti_max', 4.5),
-            )
-        else:
-            itis = [self.design.get('iti_duration', 0.3)] * n
-
-        return [(t[0], t[1], t[2], iti) for t, iti in zip(trials, itis)]
-
-    # ── Content generators ───────────────────────────────────────────
-
-    def _gen_congruent(self, n: int) -> list:
-        """Balanced congruent trials: each ink color equally often."""
-        trials = []
-        per, rem = divmod(n, 3)
-        for i, c in enumerate(self._ink_colors):
-            cnt = per + (1 if i < rem else 0)
-            trials.extend([(self._color_words[c], c, 'congruent')] * cnt)
-        random.shuffle(trials)
-        return trials
-
-    def _gen_incongruent(self, n: int) -> list:
-        """Balanced incongruent: 6 word/ink pairs equally distributed."""
-        trials = []
-        n_pairs = len(self._inc_pairs)
-        per, rem = divmod(n, n_pairs)
-        for i, (w, ink) in enumerate(self._inc_pairs):
-            cnt = per + (1 if i < rem else 0)
-            trials.extend([(w, ink, 'incongruent')] * cnt)
-        random.shuffle(trials)
-        return trials
-
-    def _gen_neutral(self, n: int) -> list:
-        """Balanced neutral: abstract words, ink colors equally distributed."""
-        trials = []
-        per, rem = divmod(n, 3)
-        pool = list(self._neutral_words)
-        random.shuffle(pool)
-        k = 0
-        for i, c in enumerate(self._ink_colors):
-            cnt = per + (1 if i < rem else 0)
-            for _ in range(cnt):
-                trials.append((pool[k % len(pool)], c, 'neutral'))
-                k += 1
-        random.shuffle(trials)
-        return trials
-
-    def _gen_mixed(self, n: int) -> list:
-        """Equal mix of the 3 trial types (event-related design)."""
-        per, rem = divmod(n, 3)
-        n_neu = per + (1 if rem > 0 else 0)
-        n_con = per + (1 if rem > 1 else 0)
-        n_inc = n - n_neu - n_con
-        return (
-            self._gen_neutral(n_neu)
-            + self._gen_congruent(n_con)
-            + self._gen_incongruent(n_inc)
-        )
-
-    # ── Ordering constraints ─────────────────────────────────────────
-
-    def _no_repeat_type(self, trials: list) -> list:
-        """
-        Reorder so that no two consecutive trials share the same trial_type.
-        Greedy construction from type pools (feasible when balanced).
-        """
-        pools = defaultdict(list)
-        for t in trials:
-            pools[t[2]].append(t)
-        for p in pools.values():
-            random.shuffle(p)
-
-        result = []
-        last_type = None
-
-        for _ in range(len(trials)):
-            candidates = [k for k, v in pools.items() if v and k != last_type]
-            if not candidates:
-                candidates = [k for k, v in pools.items() if v]
-                if not candidates:
-                    break
-            chosen = max(candidates, key=lambda k: len(pools[k]))
-            result.append(pools[chosen].pop())
-            last_type = chosen
-
-        return result
-
-    def _soft_desequence_color(self, trials: list, max_c: int = 2) -> list:
-        """
-        Avoid >max_c consecutive identical ink colors WITHOUT breaking
-        the trial-type alternation (swap only between same-type trials).
-        """
-        for _ in range(80):
-            ok = True
-            for i in range(max_c, len(trials)):
-                window = [trials[j][1] for j in range(i - max_c, i + 1)]
-                if len(set(window)) == 1:
-                    ok = False
-                    cands = [
-                        k for k in range(len(trials))
-                        if trials[k][2] == trials[i][2]
-                        and trials[k][1] != trials[i][1]
-                    ]
-                    if cands:
-                        s = random.choice(cands)
-                        trials[i], trials[s] = trials[s], trials[i]
-                    break
-            if ok:
-                break
-        return trials
-
-    def _double_desequence(self, trials: list, max_c: int = 2) -> list:
-        """No >max_c consecutive same ink color AND same word."""
-        trials = desequence(
-            trials, key_func=lambda t: t[1], max_consecutive=max_c
-        )
-        for _ in range(50):
-            ok = True
-            for i in range(max_c, len(trials)):
-                w = [trials[j][0] for j in range(i - max_c, i + 1)]
-                if len(set(w)) == 1:
-                    ok = False
-                    cands = [
-                        k for k in range(i + 1, len(trials))
-                        if trials[k][0] != trials[i][0]
-                    ]
-                    if cands:
-                        s = random.choice(cands)
-                        trials[i], trials[s] = trials[s], trials[i]
-                    break
-            if ok:
-                break
-        return trials
-
-    # ═════════════════════════════════════════════════════════════════
-    # TRIAL EXECUTION
+    # TRIAL
     # ═════════════════════════════════════════════════════════════════
 
     def run_trial(self, trial_data, block_idx: int, trial_idx: int,
@@ -460,19 +420,16 @@ class StroopTask(BaseTask):
 
         fix_dur = self.design.get('fixation_duration', 0.5)
         stim_dur = self.design.get('stim_duration', 1.2)
-
         correct_key = self._color_to_key[ink_color]
-        self.flush_keyboard()
 
+        self.flush_keyboard()
         responded = False
         rt = None
         response_key = None
         response_color = None
         guide_shown = False
 
-        # ── Phase 1: Fixation — guide always hidden ──────────────────
-        # The stimulus is imminent (fix_dur < hide_lead in every design),
-        # so we force the guide off for the whole fixation window.
+        # ── Fixation — guide forced off ──────────────────────────────
         self._next_stim_time = self.clock.time + fix_dur
         self._fixation.draw()
         self.win.flip()
@@ -483,16 +440,16 @@ class StroopTask(BaseTask):
             self.win.flip()
             self.get_keys(key_list=[])
 
-        # ── Phase 2: Colored word — guide always hidden ──────────────
+        # ── Stimulus — guide forced off ──────────────────────────────
         self._word_stim.text = word
         self._word_stim.color = self._color_rgb[ink_color]
         self._word_stim.draw()
         self.win.flip()
         stim_onset = self.clock.time
 
-        ttl_code = self._ttl.get(f'stim_{trial_type}', 0)
-        if ttl_code:
-            self.hardware.send_trigger(ttl_code)
+        code = self._ttl.get(f'stim_{trial_type}', 0)
+        if code:
+            self.hardware.send_trigger(code)
         self.hardware.send_eyetracker_message(
             f"STIM_{trial_type[:3].upper()}_{word}_{ink_color}_"
             f"B{block_idx}_T{trial_idx}_t{stim_onset:.3f}"
@@ -507,25 +464,19 @@ class StroopTask(BaseTask):
                     rt = self.clock.time - stim_onset
                     response_key = keys[0].name
                     response_color = self._key_to_color.get(response_key)
-                    ttl_r = self._ttl.get(
+                    t = self._ttl.get(
                         'response_correct' if response_color == ink_color
-                        else 'response_incorrect', 0
-                    )
-                    if ttl_r:
-                        self.hardware.send_trigger(ttl_r)
+                        else 'response_incorrect', 0)
+                    if t:
+                        self.hardware.send_trigger(t)
             self._word_stim.draw()
             self.win.flip()
 
-        # ── Phase 3: ITI — guide visible under the hide_lead rule ────
+        # ── ITI — guide allowed ──────────────────────────────────────
         iti_onset = self.clock.time
         iti_end = iti_onset + iti_dur
-        is_last = (trial_idx >= block_def['n_trials'] - 1)
-
-        if is_last:
-            # A rest period follows; run_rest will set its own estimate.
-            self._next_stim_time = None
-        else:
-            self._next_stim_time = iti_end + fix_dur
+        last = (trial_idx >= block_def['n_trials'] - 1)
+        self._next_stim_time = None if last else iti_end + fix_dur
 
         self._fixation.draw()
         if self._guide_visible():
@@ -541,12 +492,11 @@ class StroopTask(BaseTask):
                     rt = self.clock.time - stim_onset
                     response_key = keys[0].name
                     response_color = self._key_to_color.get(response_key)
-                    ttl_r = self._ttl.get(
+                    t = self._ttl.get(
                         'response_correct' if response_color == ink_color
-                        else 'response_incorrect', 0
-                    )
-                    if ttl_r:
-                        self.hardware.send_trigger(ttl_r)
+                        else 'response_incorrect', 0)
+                    if t:
+                        self.hardware.send_trigger(t)
             else:
                 self.get_keys(key_list=[])
             self._fixation.draw()
@@ -556,28 +506,31 @@ class StroopTask(BaseTask):
             self.win.flip()
 
         self._next_stim_time = None
-
         is_correct = (response_color == ink_color) if responded else False
 
         # ── Record ───────────────────────────────────────────────────
-        record = self._base_record(block_idx, trial_idx, block_def)
-        record.update({
-            'paradigm': self.design.get('paradigm', 'block'),
+        rec = self._base_record(block_idx, trial_idx, block_def)
+        rec.update({
+            # BIDS events.tsv core columns
+            'onset': round(stim_onset, 4),
+            'duration': stim_dur,
+            'trial_type': trial_type,
+            # Condition
             'block_condition': block_def['condition'],
             'n_trials_in_block': block_def['n_trials'],
             'word': word,
             'ink_color': ink_color,
-            'trial_type': trial_type,
-            'correct_key': correct_key,
+            # Response
             'correct_color': ink_color,
+            'correct_key': correct_key,
             'responded': int(responded),
-            'response_key': response_key or '',
-            'response_direction': response_color or '',
-            'response_color': response_color or '',
-            'rt': round(rt, 4) if rt is not None else -1,
+            'response_key': response_key if responded else None,
+            'response_color': response_color if responded else None,
+            'rt': round(rt, 4) if (responded and rt is not None) else None,
             'is_correct': int(is_correct),
             'is_error': int(responded and not is_correct),
             'is_miss': int(not responded),
+            # Timing detail
             'fixation_onset': round(fix_onset, 4),
             'stim_onset': round(stim_onset, 4),
             'iti_onset': round(iti_onset, 4),
@@ -587,11 +540,9 @@ class StroopTask(BaseTask):
             'guide_shown_in_iti': int(guide_shown),
         })
 
-        self._print_trial(
-            block_idx, trial_idx, word, ink_color, trial_type,
-            responded, is_correct, rt, stim_onset,
-        )
-        return record
+        self._print_trial(block_idx, trial_idx, word, ink_color,
+                          trial_type, responded, is_correct, rt, stim_onset)
+        return rec
 
     # ═════════════════════════════════════════════════════════════════
     # CONSOLE
@@ -606,83 +557,71 @@ class StroopTask(BaseTask):
             tag, sym, rt_s = 'OK  ', SYM_OK, f"{rt * 1000:5.0f}ms"
         else:
             tag, sym = 'ERR ', SYM_ERR
-            rt_s = f"{rt * 1000:5.0f}ms" if rt and rt > 0 else "    - "
-        print(
-            f"  B{bi:02d} T{ti:02d} | t={onset:8.3f}s | "
-            f"{tt} | {word:>6s} [{ink[:3]}] | {tag} {sym} | {rt_s}"
-        )
+            rt_s = f"{rt * 1000:5.0f}ms" if rt else "    - "
+        print(f"  B{bi:02d} T{ti:02d} | t={onset:8.3f}s | {tt} | "
+              f"{word:>6s} [{ink[:3]}] | {tag} {sym} | {rt_s}")
 
     def _print_task_stats(self) -> None:
-        records = self.data_writer.records
-        if not records:
+        recs = self.data_writer.records
+        if not recs:
             return
 
-        total = len(records)
-        correct = sum(r['is_correct'] for r in records)
-        errors = sum(r.get('is_error', 0) for r in records)
-        misses = sum(r.get('is_miss', 0) for r in records)
+        total = len(recs)
+        correct = sum(r['is_correct'] for r in recs)
+        errors = sum(r['is_error'] for r in recs)
+        misses = sum(r['is_miss'] for r in recs)
 
-        print(f"\n{'=' * 60}")
-        print(f"  STROOP - {correct}/{total} ({100 * correct / total:.1f}%)")
-        print(f"  Correct={correct}  Erreurs={errors}  Miss={misses}")
-
-        n_guide = sum(r.get('guide_shown_in_iti', 0) for r in records)
-        print(f"  Guide couleur affiche pendant {n_guide}/{total} ITI")
-        print(f"  {'-' * 54}")
+        print(f"\n{'=' * 62}")
+        print(f"  STROOP — design {self.design_id} | "
+              f"{self.design.get('name', '')}")
+        print(f"  {correct}/{total} corrects ({100 * correct / total:.1f}%) | "
+              f"Err={errors}  Miss={misses}")
+        print(f"  {'-' * 56}")
 
         by_type = defaultdict(list)
-        for r in records:
+        for r in recs:
             by_type[r['trial_type']].append(r)
 
-        rt_by = {}
+        rt_med = {}
         for tt in ['congruent', 'incongruent', 'neutral']:
-            recs = by_type.get(tt, [])
-            if not recs:
+            rs = by_type.get(tt, [])
+            if not rs:
                 continue
-            n = len(recs)
-            acc = 100 * sum(r['is_correct'] for r in recs) / n
-            rts = [r['rt'] for r in recs if r['rt'] > 0 and r['is_correct']]
-            mean = sum(rts) / len(rts) if rts else 0
-            rt_by[tt] = mean
+            n = len(rs)
+            acc = 100 * sum(r['is_correct'] for r in rs) / n
+            rts = [r['rt'] for r in rs if r['is_correct'] and r['rt']]
             if rts:
                 s = sorted(rts)
-                mid = len(s) // 2
-                med = s[mid] if len(s) % 2 else (s[mid - 1] + s[mid]) / 2
-                med_s = f"{med * 1000:.0f}ms"
+                m = len(s) // 2
+                med = s[m] if len(s) % 2 else (s[m - 1] + s[m]) / 2
+                rt_med[tt] = med
+                mean = sum(rts) / len(rts)
+                rt_txt = f"Med={med * 1000:4.0f}ms Mean={mean * 1000:4.0f}ms"
             else:
-                med_s = "-"
-            mean_s = f"{mean * 1000:.0f}ms" if rts else "-"
-            err = sum(r.get('is_error', 0) for r in recs)
-            mis = sum(r.get('is_miss', 0) for r in recs)
-            print(
-                f"  {tt:12s}: {acc:5.1f}% ({n:3d}) | "
-                f"Mean={mean_s:>6s} Med={med_s:>6s} | "
-                f"Err={err:2d} Miss={mis:2d}"
-            )
+                rt_txt = "Med=   -  Mean=   -"
+            print(f"  {tt:12s}: {acc:5.1f}% ({n:3d} essais) | {rt_txt} | "
+                  f"Err={sum(r['is_error'] for r in rs):2d} "
+                  f"Miss={sum(r['is_miss'] for r in rs):2d}")
 
-        con = rt_by.get('congruent', 0)
-        inc = rt_by.get('incongruent', 0)
-        neu = rt_by.get('neutral', 0)
-        print(f"  {'-' * 54}")
-        if inc > 0 and con > 0:
-            print(f"  Interference (INC-CON): {(inc - con) * 1000:+.0f}ms")
-        if inc > 0 and neu > 0:
-            print(f"  Interference (INC-NEU): {(inc - neu) * 1000:+.0f}ms")
-        if neu > 0 and con > 0:
-            print(f"  Facilitation (CON-NEU): {(con - neu) * 1000:+.0f}ms")
+        con, inc, neu = (rt_med.get(k, 0) for k in
+                         ('congruent', 'incongruent', 'neutral'))
+        print(f"  {'-' * 56}")
+        if inc and con:
+            print(f"  Interference (INC-CON): {(inc - con) * 1000:+5.0f}ms")
+        if inc and neu:
+            print(f"  Interference (INC-NEU): {(inc - neu) * 1000:+5.0f}ms")
+        if con and neu:
+            print(f"  Facilitation (NEU-CON): {(neu - con) * 1000:+5.0f}ms")
 
         by_ink = defaultdict(list)
-        for r in records:
+        for r in recs:
             by_ink[r['ink_color']].append(r)
-        if len(by_ink) > 1:
-            print(f"  {'-' * 54}")
-            for c in sorted(by_ink):
-                recs = by_ink[c]
-                n = len(recs)
-                acc = 100 * sum(r['is_correct'] for r in recs) / n
-                rts = [r['rt'] for r in recs
-                       if r['rt'] > 0 and r['is_correct']]
-                rt_s = f"{sum(rts) / len(rts) * 1000:.0f}ms" if rts else "-"
-                print(f"  ink={c:6s}: {acc:5.1f}% ({n}) | RT={rt_s}")
+        print(f"  {'-' * 56}")
+        for c in sorted(by_ink):
+            rs = by_ink[c]
+            acc = 100 * sum(r['is_correct'] for r in rs) / len(rs)
+            rts = [r['rt'] for r in rs if r['is_correct'] and r['rt']]
+            rt_s = f"{sum(rts) / len(rts) * 1000:4.0f}ms" if rts else "   -"
+            print(f"  encre {c:6s}: {acc:5.1f}% ({len(rs):3d}) | RT={rt_s}")
 
-        print(f"{'=' * 60}\n")
+        print(f"{'=' * 62}\n")

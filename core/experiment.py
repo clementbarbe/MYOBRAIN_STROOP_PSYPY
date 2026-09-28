@@ -85,7 +85,13 @@ class Experiment:
         return win
 
     def run_task(self, task_name: str, design_id: int = 1,
-                 **kwargs) -> Path | None:
+                 seed: int | None = None, **kwargs) -> Path | None:
+        """
+        Create and run a task.
+
+        The run number is resolved here, before the DataWriter is built,
+        so an existing acquisition can never be overwritten.
+        """
         task_cls = get_task(task_name)
         if task_cls is None:
             raise ConfigError(f"Unknown task '{task_name}'.")
@@ -94,9 +100,17 @@ class Experiment:
         if not task_config:
             raise ConfigError(f"No config for task '{task_name}'.")
 
+        # ── Resolve a collision-free run number ──────────────────────
+        from dataio.subject_handler import ensure_directories
+        ensure_directories(self.settings, task_name)
+        self.settings.run = self.settings.resolve_run(task_name, design_id)
+
+        stem = self.settings.base_name(task_name, design_id)
+        self.logger.ok(f"Output stem: {stem}")
+
         data_writer = DataWriter(
             output_dir=self.settings.task_dir(task_name),
-            filename=self.settings.output_filename(task_name, 'events'),
+            filename=stem,
             logger=self.logger,
         )
 
@@ -106,10 +120,11 @@ class Experiment:
             logger=self.logger, event_bus=self.event_bus,
             settings=self.settings, scanner=self.scanner,
             task_config=task_config, design_id=design_id,
-            **kwargs,
+            seed=seed, **kwargs,
         )
 
-        self.logger.ok(f"Running: {task_name} design {design_id}")
+        self.logger.ok(f"Running {task_name} design {design_id} "
+                       f"run {self.settings.run}")
         return task.run()
 
     def cleanup(self) -> None:
