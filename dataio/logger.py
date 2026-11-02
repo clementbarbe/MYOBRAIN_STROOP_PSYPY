@@ -34,7 +34,7 @@ class ExperimentLogger:
             ts = datetime.now().strftime('%Y%m%d_%H%M%S')
             log_path = (
                 log_dir
-                / f"sub-{settings.participant_id}_ses-{settings.session}_{ts}.log"
+                / f"sub-{settings.participant_id}_{ts}.log"
             )
             try:
                 self._file = open(log_path, 'a', encoding='utf-8')

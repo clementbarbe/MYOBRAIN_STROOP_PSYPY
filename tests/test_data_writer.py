@@ -33,7 +33,8 @@ def test_preferred_columns_first(writer, tmp_path):
                         'trial_type': 'congruent', 'duration': 1.2})
     writer.save_final()
     header = (tmp_path / 'test_events.tsv').read_text().splitlines()[0]
-    assert header.split('\t')[:3] == ['onset', 'duration', 'trial_type']
+    assert header.split('\t')[:2] == ['onset', 'duration']
+    assert set(header.split('\t')) == {'word', 'onset', 'trial_type', 'duration'}
 
 
 def test_row_count_matches(writer, tmp_path):

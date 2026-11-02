@@ -1,1 +1,1 @@
-"""Shared utilities — timing, visual, validators, decorators."""
+"""Console utilities for Stroop."""

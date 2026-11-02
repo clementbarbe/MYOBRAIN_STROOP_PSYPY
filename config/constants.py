@@ -24,6 +24,7 @@ FRAME_TOLERANCE_SEC = 0.002
 END_SCREEN_DURATION = 3.0
 TRIGGER_TIMEOUT = 300.0
 QUIT_KEY = 'escape'
+ADVANCE_KEY = 's' 
 
 TIMESTAMP_FMT = '%Y-%m-%d_%H-%M-%S'
 TIMESTAMP_PRECISE_FMT = '%H:%M:%S.%f'
@@ -34,8 +35,3 @@ TTL_REST_START = 200
 TTL_REST_END = 201
 TTL_INSTRUCTION = 210
 
-# ── Audio ────────────────────────────────────────────────────────────
-AUDIO_BACKEND = 'ptb'
-AUDIO_SAMPLE_RATE = 48000
-AUDIO_SCHEDULE_LEAD = 0.100     # schedule 100ms before target
-AUDIO_MIN_LEAD = 0.030          # minimum 30ms or play immediately

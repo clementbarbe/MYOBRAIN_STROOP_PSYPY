@@ -6,11 +6,11 @@ PsychoPy is only imported when get_task() resolves the class.
 
 Usage in tasks/__init__.py::
 
-    register_lazy('flanker', 'tasks.flanker', 'FlankerTask')
+    register_lazy('stroop', 'tasks.stroop', 'StroopTask')
 
 Usage at runtime::
 
-    task_cls = get_task('flanker')   # imports tasks.flanker NOW
+    task_cls = get_task('stroop')   # imports tasks.stroop NOW
 """
 
 from __future__ import annotations
@@ -45,9 +45,9 @@ def register_lazy(name: str, module_path: str, class_name: str) -> None:
     This avoids loading PsychoPy when only the GUI/registry is needed.
 
     Args:
-        name: task name (e.g. 'flanker')
-        module_path: dotted module path (e.g. 'tasks.flanker')
-        class_name: class name in that module (e.g. 'FlankerTask')
+        name: task name (e.g. 'stroop')
+        module_path: dotted module path (e.g. 'tasks.stroop')
+        class_name: class name in that module (e.g. 'StroopTask')
     """
     _REGISTRY[name.lower()] = f"{module_path}:{class_name}"
 

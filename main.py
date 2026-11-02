@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-fMRI Experiment Framework — entry point.
+Tâche Stroop en IRMf — interface de lancement.
 """
 
 import sys
@@ -15,25 +15,23 @@ init_console()
 def main():
     from gui.launcher import show_menu
 
-    config = show_menu()
-    if config is None:
-        print("Ferme sans lancer d'experience.")
-        return
-
     from core.experiment import Experiment
 
-    settings = config['settings']
-    task_name = config['task_name']
-    design_id = config['design_id']
-    extra = config.get('extra_params', {})
-
-    exp = Experiment(settings)
-    try:
-        saved = exp.run_task(task_name, design_id=design_id, **extra)
-        if saved:
-            print(f"\n[OK] Data saved: {saved}")
-    finally:
-        exp.cleanup()
+    settings = None
+    while True:
+        config = show_menu(settings)
+        if config is None:
+            return
+        settings = config['settings']
+        exp = Experiment(settings)
+        try:
+            saved = exp.run_stroop(training=config['training'])
+            if saved:
+                print(f"\n[OK] Data saved: {saved}")
+        finally:
+            exp.cleanup()
+        if not config['training']:
+            return
 
 
 if __name__ == '__main__':

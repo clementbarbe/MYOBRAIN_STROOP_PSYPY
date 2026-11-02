@@ -21,14 +21,18 @@ from dataio.logger import ExperimentLogger
 
 NA = 'n/a'
 
-# Columns placed first, in this order, when present in the record.
-# Mirrors the BIDS events.tsv convention so the file can be used as-is.
+# Canonical analysis columns first, in the order most scripts expect.
+# 'onset' leading also makes the file directly usable as a BIDS
+# events.tsv. Any column not listed here keeps its insertion order.
 _PREFERRED_ORDER = [
-    'onset', 'duration', 'trial_type',
-    'participant', 'session', 'run', 'task', 'design_id', 'design_name',
-    'paradigm', 'scanner', 'mode', 'seed',
-    'block_idx', 'block_condition', 'trial_idx', 'trial_idx_global',
-    'n_trials_in_block',
+    # The ten columns needed for a standard behavioural analysis
+    'subject', 'run', 'trial', 'condition', 'onset',
+    'stimulus', 'correct_response', 'response', 'correct', 'RT',
+    # BIDS companion
+    'duration',
+    # Position and provenance
+    'task', 'block', 'trial_in_block',
+    'design_id', 'design_name', 'paradigm', 'scanner', 'mode',
 ]
 
 

@@ -1,33 +1,24 @@
-"""Tests for task infrastructure."""
+"""Only the Stroop task and its current schedules are available."""
 
 import pytest
+
 from tasks.registry import get_task, list_tasks
+from config.tasks_config import load_task_config
 
 
-class TestTaskRegistry:
-    def test_flanker_registered(self):
-        assert get_task('flanker') is not None
-
-    def test_nback_registered(self):
-        assert get_task('nback') is not None
-
-    def test_unknown_returns_none(self):
-        assert get_task('nonexistent_task') is None
-
-    def test_list_tasks(self):
-        tasks = list_tasks()
-        assert 'flanker' in tasks
-        assert 'nback' in tasks
+def test_only_stroop_registered():
+    assert list_tasks() == ['stroop']
+    assert get_task('stroop') is not None
+    assert get_task('nonexistent_task') is None
 
 
-class TestTaskConfig:
-    def test_load_flanker_config(self):
-        from config.tasks_config import load_task_config
-        cfg = load_task_config('flanker')
-        assert 'designs' in cfg
-        assert 1 in cfg['designs']
+def test_stroop_configuration():
+    cfg = load_task_config('stroop')
+    assert set(cfg['designs']) == {'A', 'B', 'C', 'D', 'training'}
+    assert cfg['response_keys_fmri'] == {'rouge': 'b', 'bleu': 'y', 'vert': 'g'}
 
-    def test_load_nback_config(self):
-        from config.tasks_config import load_task_config
-        cfg = load_task_config('nback')
-        assert 'designs' in cfg
+
+def test_invalid_config_does_not_fall_back(tmp_path):
+    (tmp_path / 'stroop.yaml').write_text('designs: [broken', encoding='utf-8')
+    with pytest.raises(Exception):
+        load_task_config('stroop', tmp_path)

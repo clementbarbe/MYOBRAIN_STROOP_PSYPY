@@ -1,6 +1,12 @@
 """Tests for ExperimentClock."""
 
+import os
 import pytest
+
+pytestmark = pytest.mark.skipif(
+    os.environ.get('STROOP_HEADLESS_TESTS') == '1',
+    reason='These clock checks require the real PsychoPy installation.',
+)
 
 
 class TestExperimentClock:

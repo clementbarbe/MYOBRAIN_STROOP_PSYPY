@@ -15,6 +15,7 @@ from config.settings import ExperimentSettings
 from config.scanners import get_scanner
 from config.scanners.base import ScannerConfig
 from config.tasks_config import load_task_config
+from config.stroop_designs import design_for_subject
 from config.constants import BG_COLOR
 from core.clock import ExperimentClock
 from core.events import EventBus
@@ -39,11 +40,8 @@ class Experiment:
         self.hardware = HardwareManager(
             scanner=self.scanner,
             logger=self.logger,
-            enabled=settings.trigger_output_enabled,
+            enabled=False,
         )
-
-        if settings.eyetracker_enabled:
-            self.hardware.init_eyetracker()
 
         Experiment._active_instance = self
         atexit.register(Experiment._atexit_cleanup)
@@ -84,48 +82,31 @@ class Experiment:
 
         return win
 
-    def run_task(self, task_name: str, design_id: int = 1,
-                 seed: int | None = None, **kwargs) -> Path | None:
-        """
-        Create and run a task.
-
-        The run number is resolved here, before the DataWriter is built,
-        so an existing acquisition can never be overwritten.
-        """
-        task_cls = get_task(task_name)
+    def run_stroop(self, training: bool = False) -> Path | None:
+        """Derive the design from the inclusion number; one acquisition per subject."""
+        design_id = 'training' if training else design_for_subject(self.settings.participant_id)
+        self.settings.run = self.settings.resolve_run('stroop', design_id)
+        task_config = load_task_config('stroop')
+        task_cls = get_task('stroop')
         if task_cls is None:
-            raise ConfigError(f"Unknown task '{task_name}'.")
-
-        task_config = load_task_config(task_name)
-        if not task_config:
-            raise ConfigError(f"No config for task '{task_name}'.")
-
-        # ── Resolve a collision-free run number ──────────────────────
+            raise ConfigError('Impossible de charger la tâche Stroop.')
         from dataio.subject_handler import ensure_directories
-        ensure_directories(self.settings, task_name)
-        self.settings.run = self.settings.resolve_run(task_name, design_id)
-
-        stem = self.settings.base_name(task_name, design_id)
-        self.logger.ok(f"Output stem: {stem}")
-
+        ensure_directories(self.settings, 'stroop')
+        stem = self.settings.base_name('stroop', design_id)
+        self.logger.ok(f'Output stem: {stem}')
         data_writer = DataWriter(
-            output_dir=self.settings.task_dir(task_name),
-            filename=stem,
-            logger=self.logger,
+            output_dir=self.settings.task_dir('stroop'), filename=stem, logger=self.logger,
         )
-
-        task = task_cls(
-            win=self.win, clock=self.clock,
-            hardware=self.hardware, data_writer=data_writer,
-            logger=self.logger, event_bus=self.event_bus,
-            settings=self.settings, scanner=self.scanner,
-            task_config=task_config, design_id=design_id,
-            seed=seed, **kwargs,
-        )
-
-        self.logger.ok(f"Running {task_name} design {design_id} "
-                       f"run {self.settings.run}")
-        return task.run()
+        try:
+            task = task_cls(
+                win=self.win, clock=self.clock, hardware=self.hardware,
+                data_writer=data_writer, logger=self.logger, event_bus=self.event_bus,
+                settings=self.settings, scanner=self.scanner, task_config=task_config,
+                design_id=design_id,
+            )
+            return task.run()
+        finally:
+            data_writer.close()
 
     def cleanup(self) -> None:
         try: self.hardware.close()

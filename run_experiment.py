@@ -1,49 +1,47 @@
 #!/usr/bin/env python3
-"""
-CLI entry point.
-"""
+"""Launch Stroop with the design assigned by subject inclusion number."""
 
-import sys
 import argparse
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from utils.console import init_console
-init_console()
 
 
 def main():
-    p = argparse.ArgumentParser()
-    p.add_argument('--pid', required=True)
-    p.add_argument('--session', default='01')
-    p.add_argument('--task', required=True)
-    p.add_argument('--design', type=int, default=1)
-    p.add_argument('--mode', default='pc', choices=['pc', 'fmri'])
-    p.add_argument('--screen', type=int, default=0)
-    p.add_argument('--no-fullscreen', action='store_true')
-    p.add_argument('--no-triggers', action='store_true')
-    args = p.parse_args()
+    parser = argparse.ArgumentParser(description='Stroop IRMf — design associé au numéro d’inclusion')
+    parser.add_argument('--subject', '--pid', dest='subject', type=int, required=True,
+                        help='Numéro d’inclusion : sujet 1=A, 2=B, 3=C, 4=D, 5=A…')
+    parser.add_argument('--training', action='store_true', help='Environ 3 minutes : boîtier, pastilles puis Stroop, sans trigger')
+    parser.add_argument('--mode', default='fmri', choices=['pc', 'fmri'])
+    parser.add_argument('--screen', type=int, default=0)
+    parser.add_argument('--no-fullscreen', action='store_true')
+    args = parser.parse_args()
+    if args.subject < 1:
+        parser.error('Le numéro d’inclusion doit être supérieur ou égal à 1')
+    if args.screen < 0:
+        parser.error('--screen doit être supérieur ou égal à 0')
 
     from config.settings import ExperimentSettings
-    from core.experiment import Experiment
-
+    from config.stroop_designs import design_for_subject
     settings = ExperimentSettings(
-        participant_id=args.pid,
-        session=args.session,
-        mode=args.mode,
-        fullscreen=(not args.no_fullscreen and args.mode == 'fmri'),
+        participant_id=str(args.subject),
+        mode=args.mode, fullscreen=(not args.no_fullscreen and args.mode == 'fmri'),
         screen_index=args.screen,
-        trigger_output_enabled=(not args.no_triggers),
     )
-
-    exp = Experiment(settings)
     try:
-        saved = exp.run_task(args.task, design_id=args.design)
+        variant = 'training' if args.training else design_for_subject(args.subject)
+        settings.run = settings.resolve_run('stroop', variant)
+    except (ValueError, FileExistsError) as error:
+        parser.error(str(error))
+
+    init_console()
+    from core.experiment import Experiment
+    experiment = Experiment(settings)
+    try:
+        saved = experiment.run_stroop(training=args.training)
         if saved:
-            print(f"\n[OK] {saved}")
+            print(f'\n[OK] {saved}')
     finally:
-        exp.cleanup()
+        experiment.cleanup()
 
 
 if __name__ == '__main__':

@@ -1,298 +1,151 @@
-# fMRI Experiment Framework
+# Stroop en IRMf
 
-A modular PsychoPy framework for cognitive neuroimaging experiments.
-Built for multi-scanner fMRI research with precise timing, hardware abstraction, and easy task creation.
+Lancer `python main.py`, saisir le numéro d’inclusion du sujet,
+puis choisir **TRAINING** ou **RUN**. Le menu contient seulement le sujet,
+l’écran, le mode PC/fMRI, le design associé, la durée et ces deux boutons.
+Après l’entraînement, le menu se rouvre avec le sujet, l’écran et le mode conservés.
 
----
+Le design est associé automatiquement au **numéro d’inclusion du sujet** :
+**sujet 1 → A, 2 → B, 3 → C, 4 → D, 5 → A**, et ainsi de suite. Chaque groupe
+successif de quatre inclusions reçoit donc une fois chacun des quatre designs.
+Chaque participant effectue une seule acquisition (`run-01`). Une acquisition
+existante, même partielle, est protégée contre l'écrasement. Les numéros `5` et
+`005` identifient le même sujet (`sub-005`). Il n'y a pas de sélection de session,
+de port parallèle ou d'eye-tracker. Le bouton **TRAINING** est placé au-dessus
+de **RUN**.
 
-## Features at a Glance
+La tâche lit directement `stroop_design_A.tsv` à `stroop_design_D.tsv`, sans
+modifier leur ordre, leurs mots, leurs couleurs ou leurs timings. Chaque fichier
+contient 75 essais : 30 congruents, 30 incongruents et 15 neutres. Le premier
+stimulus apparaît à 10 s du trigger. Les onsets sont programmés depuis le même
+zéro temporel pour éviter l'accumulation des retards.
 
-| Feature | Description |
-|---|---|
-| **Multi-scanner** | CIMA, TERRA, PRISMA configs built-in. Add your own in one file. |
-| **Plug & play tasks** | Add a task = 1 Python file + 1 YAML file + 1 line in `__init__` |
-| **Hardware abstraction** | Parallel port, serial, eye-tracker — tasks never touch devices directly |
-| **Precise audio** | PTB-scheduled playback with preloading (sub-ms jitter) |
-| **Escape = clean exit** | Press Escape anytime → data saved, eye-tracker closed, hardware reset |
-| **Crash-safe data** | Every trial written to CSV immediately |
-| **BIDS-inspired output** | `sub-XX/ses-XX/task/` directory structure |
-| **GUI launcher** | Sober PyQt6 menu — click a design button, experiment starts |
-| **Arrow keys default** | PC mode uses ← → out of the box |
+Après la dernière fixation prévue dans le TSV, le RUN ajoute **10 secondes de
+fixation seule**, sans mots ni indices de couleur. Les pulses scanner restent
+suivis pendant cette période et le marqueur de fin est envoyé ensuite. Avec les
+TSV actuels, cela porte la durée à **448,95 s (7 min 28,95 s)** depuis le trigger.
+L'acquisition IRM doit rester active pendant cette période. Le menu affiche la
+durée totale ; `final_rest_duration` dans `config/tasks_config/stroop.yaml`
+permet de régler ce délai, également documenté dans `*_design.json`.
 
----
+## Entraînement progressif et vérification des acquis
 
-## Quick Start
+L'entraînement dure environ **3 minutes** : 3 min 10 à 3 min 18 avec les TSV
+actuels, hors lecture des consignes initiales et du bilan. C'est un choix pratique
+à piloter, sans prétention de durée ou de seuil validés par la littérature.
 
-### GUI (recommended)
+1. **Découverte du boîtier, 20 secondes** : une illustration horizontale affiche
+   les couleurs de réponse de gauche à droite **rouge, bleu, vert, gris**. Chaque
+   pression fait clignoter le bouton correspondant à l'écran. Seuls **b/y/g**
+   servent à répondre ; le quatrième bouton (`r`), gris, réagit sur cet écran, mais est marqué
+   « Non utilisé ». Les trois boutons actifs doivent être essayés.
+2. **Association avec rappel, 18 essais / 54 secondes** : pastilles rouges,
+   bleues et vertes, six de chaque couleur. Le schéma et les associations restent
+   affichés. Chaque pastille dure 2 s, suivie de 1 s pour la correction.
+3. **Même exercice sans rappel, 18 essais / 54 secondes** : plus de boîtier ni
+   d'associations affichés. La correction indique uniquement « Correct »,
+   « Incorrect » ou « Pas de réponse », sans donner la touche.
+4. **Familiarisation Stroop, neuf essais** : trois exemples de chaque condition,
+   tirés du design attribué au sujet. Les mots, encres, durées de stimulus
+   (1,2 s), fixations et touches sont ceux du format final. Aucun rappel ni
+   feedback n'est affiché, comme pendant l'acquisition. Une consigne de 4 s
+   précède chacune des trois séries.
+
+Le bilan final affiche les scores de chaque série. Le critère pratique par
+défaut exige **au moins 80 % de réponses correctes dans chacune des deux
+séries sans rappel**, au moins une réussite pour chaque couleur dans chacune,
+et la vérification des trois boutons actifs pendant la découverte. Un
+entraînement incomplet ou des omissions ne peuvent pas valider ces acquis.
+Le seuil est modifiable dans `config/tasks_config/stroop.yaml`, sous
+`training.accuracy_threshold`. Si le bilan signale des points à reprendre,
+relancer l'entraînement avant l'acquisition ; le logiciel ne verrouille pas
+le bouton de lancement de la tâche sur la base de ce résultat.
+
+Le schéma montre directement les couleurs à indiquer :
+**rouge → `b`**, **bleu → `y`**, **vert → `g`**. Les couleurs affichées
+correspondent à celles des stimuli. En mode PC, les flèches remplacent ces trois
+touches et activent les mêmes positions de l'illustration.
+
+L'entraînement utilise les touches du mode choisi et démarre sans trigger après
+les consignes. Il est enregistré sous `design-training`, avec une numérotation
+indépendante des acquisitions. Les réponses, omissions et phases sont inscrites
+dans les événements ; la vérification du boîtier et le bilan sont sauvegardés
+séparément.
+
+## Touches
+
+Indiquer la **couleur de l'encre**, en ignorant le sens du mot.
+
+| Couleur | Mode PC | Mode IRMf |
+| --- | --- | --- |
+| Rouge | Flèche gauche | b |
+| Bleu | Flèche bas | y |
+| Vert | Flèche droite | g |
+
+- `s` : valider les consignes.
+- `t` : démarrer la tâche au premier trigger du profil scanner par défaut.
+- `Échap` : interrompre et sauvegarder les essais déjà acquis.
+
+La première réponse pendant l'affichage du stimulus est enregistrée. Les
+pressions pendant la fixation sont ignorées. Pendant le run d'acquisition,
+**aucun indice de couleur, schéma de boîtier ou feedback** n'apparaît : seulement
+les mots et la fixation. Les touches restent indiquées dans les consignes avant
+le trigger. Les pastilles et les boutons de l'entraînement utilisent des unités
+identiques sur les deux axes pour rester ronds quel que soit le format d'écran.
+
+## Installation et ligne de commande
+
+Utiliser un environnement Python compatible avec PsychoPy, puis installer les
+dépendances avec `python -m pip install -r requirement.txt`.
 
 ```bash
 python main.py
+python run_experiment.py --subject 5 --mode fmri
+python run_experiment.py --subject 5 --mode pc --training
 ```
-    Fill in participant name, session, screen
-    Go to the task tab (Flanker, N-Back...)
-    Click Design 1 (or 2, 3, 4) → experiment starts
 
-Command line
+Les profils d'écran et de matériel sont dans `config/scanners/` ; le profil
+par défaut reste `pc` (trigger clavier `t`, sans sortie TTL). Les touches, les
+couleurs et les paramètres visuels Stroop sont dans
+`config/tasks_config/stroop.yaml`. Les TSV récents peuvent omettre l’ancienne
+annotation `is_long_null` ; ils sont lus sans modifier leurs stimuli ni timings.
+
+## Résultats et vérification
+
+À la fin du RUN, un mini-bilan apparaît une seule fois dans la console et dans
+le fichier `.log` du participant (`data/sub-<numéro>/logs/`). Pour chaque condition,
+il indique les réponses correctes, incorrectes et absentes, le pourcentage de
+réussite et le temps de réaction moyen en millisecondes, calculé uniquement sur
+les réponses correctes avec un TR valide. Il affiche les écarts descriptifs
+incongruent − congruent, incongruent − neutre et neutre − congruent, pour le TR
+et les taux de réussite, d'erreur et d'absence (en points de pourcentage).
+Une condition sans réponse correcte donne `n/a` pour le TR, jamais zéro.
+Le bilan utilise uniquement les essais acquis et indique leur nombre par
+rapport aux 75 attendus, y compris après une interruption.
+
+Les résultats sont enregistrés dans `data/sub-<numéro>/stroop/` :
+
+- `*_events.tsv` : essais, réponses, exactitude et temps de réaction ; `n/a` en
+  cas d'omission. `onset` et `duration` mesurent les changements d'affichage.
+  `planned_onset`, `planned_duration` et `onset_error` permettent de les comparer
+  au TSV source.
+- `*_events_incremental.tsv` : sauvegarde au fil de l'acquisition.
+- `*_events.json` : description des colonnes.
+- `*_design.json` : planning complet, touches et empreinte SHA-256 du TSV source.
+- `*_training_report.json` : pressions de découverte, résultats par phase et par
+  couleur, omissions et critère pratique de vérification des acquis.
+- `*_scantrig.json` : pulses reçus et estimation du TR, si au moins deux pulses
+  ont été reçus.
 
 ```bash
-# PC mode
-python run_experiment.py --pid 01 --task flanker --design 1
-
-# fMRI mode on CIMA scanner
-python run_experiment.py --pid 01 --task nback --design 3 --mode fmri --screen 1
+python tools/check_designs.py
+python tools/check_outputs.py data/ --all
+python -m pytest -q
 ```
 
-
-## Project Structure
-
-```csharp
-project_root/
-├── main.py                      # GUI entry point
-├── run_experiment.py            # CLI entry point
-│
-├── config/
-│   ├── constants.py             # All constants (timing, TTL, paths)
-│   ├── settings.py              # ExperimentSettings dataclass
-│   ├── visual_params.py         # Degrees ↔ pixels conversion
-│   ├── scanners/                # One file per scanner site
-│   │   ├── base.py              # ScannerConfig dataclass
-│   │   ├── cima.py
-│   │   ├── terra.py
-│   │   └── prisma.py
-│   └── tasks_config/            # One YAML per task
-│       ├── flanker.yaml
-│       └── nback.yaml
-│
-├── core/
-│   ├── experiment.py            # Creates window, clock, hardware
-│   ├── clock.py                 # t=0 at trigger, all timestamps relative
-│   ├── events.py                # Pub/sub event bus
-│   └── exceptions.py            # AbortExperiment, etc.
-│
-├── tasks/
-│   ├── base.py                  # BaseTask ABC (template method)
-│   ├── registry.py              # Lazy task registration
-│   ├── flanker.py               # Eriksen Flanker
-│   ├── nback.py                 # N-Back
-│   └── utils/
-│       ├── sequence.py          # Desequencing, jittered ISIs
-│       └── sdt.py               # Signal Detection Theory
-│
-├── hardware/
-│   ├── manager.py               # HardwareManager facade
-│   ├── audio.py                 # AudioManager (PTB scheduling)
-│   ├── parallel_port.py
-│   ├── serial_trigger.py
-│   ├── keyboard_trigger.py
-│   └── eyetracker.py           # EyeLink + force reset
-│
-├── dataio/
-│   ├── logger.py                # Console + file logger
-│   ├── data_writer.py           # Incremental CSV writer
-│   └── subject_handler.py       # BIDS directory creation
-│
-├── gui/
-│   ├── launcher.py              # PyQt6 menu
-│   ├── task_panels.py           # Per-task config panels
-│   └── styles.py                # Stylesheet
-│
-├── utils/
-│   ├── console.py               # Windows ANSI + safe symbols
-│   ├── timing.py
-│   ├── visual.py
-│   └── validators.py
-│
-└── stimuli/
-    ├── images/
-    └── sounds/
-```
-
-## How To: Add a New Task (3 steps)
-Step 1 — Create the task file
-
-```python
-# tasks/stroop.py
-from tasks.base import BaseTask
-from tasks.registry import register_task
-
-@register_task('stroop')
-class StroopTask(BaseTask):
-    TASK_NAME = 'stroop'
-
-    def _setup_stimuli(self):
-        # Create your PsychoPy stimuli here
-        ...
-
-    def _get_instruction_text(self):
-        return "Press LEFT for red, RIGHT for blue..."
-
-    def _get_block_instruction(self, block_idx, block_def):
-        return f"Block {block_idx + 1}" 
-
-    def generate_trials(self, block_def):
-        # Return list of trial data
-        return [...]
-
-    def run_trial(self, trial_data, block_idx, trial_idx, block_def, **kw):
-        # Frame-accurate trial loop
-        # Use self.get_keys() — escape is checked automatically
-        # Use self.clock.time for timestamps
-        # Return a record dict
-        record = self._base_record(block_idx, trial_idx, block_def)
-        record.update({...})
-        return record
-```
-Step 2 — Register it (one line)
-
-```python
-# tasks/__init__.py
-register_lazy('stroop', 'tasks.stroop', 'StroopTask')
-
-Step 3 — Create the config
-
-yaml
-# config/tasks_config/stroop.yaml
-task_name: stroop
-designs:
-  1:
-    name: "Classic Stroop"
-    stim_duration: 1.5
-    isi_min: 1.0
-    isi_max: 1.0
-    rest_duration: 12.0
-    instruction_duration: 3.0
-    pre_block_fixation: 1.0
-    blocks:
-      - condition: congruent
-        n_trials: 20
-      - condition: incongruent
-        n_trials: 20
-```
-Done. The task appears in the GUI automatically.
-Optional — Custom GUI panel
-
-```python
-# gui/task_panels.py
-@register_panel('Stroop')
-class StroopPanel(QWidget):
-    TASK_NAME = 'stroop'
-    # Add design buttons, training options, etc.
-```
-How To: Remove a Task
-
-Comment out one line:
-
-```python
-# tasks/__init__.py
-# register_lazy('stroop', 'tasks.stroop', 'StroopTask')
-```
-
-Gone from GUI and CLI instantly.
-How To: Add a Scanner
-
-```python
-# config/scanners/my_scanner.py
-from config.scanners.base import ScannerConfig, TriggerInput, TriggerOutput
-
-def MyScannerConfig():
-    return ScannerConfig(
-        name='my_scanner',
-        screen_width_px=1920,
-        screen_height_px=1080,
-        screen_width_cm=60.0,
-        viewing_distance_cm=150.0,
-        trigger_input=TriggerInput.KEYBOARD,
-        trigger_key='5',
-        trigger_output=TriggerOutput.PARALLEL,
-        parallel_port_address=0x0378,
-        response_keys={'left': '1', 'right': '4', 'go': '1'},
-    )
-```
-
-```python
-# config/scanners/__init__.py — add one line:
-from config.scanners.my_scanner import MyScannerConfig
-_REGISTRY['my_scanner'] = MyScannerConfig()
-```
-
-## Useful Functions Reference
-
-### In any task (via self.)
-
-| Function	| What it does |
-|---|---|
- | self.get_keys(key_list=['left','right'])	| Get responses. Escape auto-checked. | 
- | self.flush_keyboard()	| Clear keyboard buffer before a trial | 
- | self.show_fixation(duration)	| Fixation cross, frame-accurate, escape-aware | 
- | self.show_text_and_wait(text)	| Show text, wait for any key | 
- | self.show_timed_text(text, duration)	| Show text for N seconds | 
- | self.clock.time	| Current time since trigger (t=0) | 
- | self._base_record(block_idx, trial_idx, block_def)	| Pre-filled record with common fields| 
- | self.hardware.send_trigger(code)	| Send TTL marker | 
- | self.hardware.send_eyetracker_message(msg)	| Timestamped ET message | 
-
-### Audio (via self.audio)
-
-| Function	| What it does | 
-|---|---|
- | self.audio.preload('name', 'path/file.wav')	|  Load file into memory (zero latency later) | 
- | self.audio.preload_tone('beep', freq=1000, duration=0.2) | 	Generate and preload a pure tone | 
- | self.audio.play_now('name') | 	Play immediately (less precise) | 
- | self.audio.play_scheduled('name', target_time, self.clock) | 	PTB-scheduled playback — call ~100ms before target | 
- | self.audio.stop('name')	 | Stop a playing sound | 
- | self.audio.stop_all()	 | Stop everything | 
-
-### Sequence generation (import from tasks.utils)
-
- | Function | 	What it does | 
- |---|---|
- | desequence(trials, key_func, max_consecutive=4)	 | Shuffle with no long runs of same condition | 
- | generate_jittered_isis(n, isi_min, isi_max) | 	Uniform random ISI list | 
- | classify_sdt(is_target, responded)	 | → {hit, miss, false_alarm, correct_rejection, is_correct}
-
-
-## Timing Reference
-
-    t=0 is defined when the scanner trigger key is received
-    ALL timestamps in CSV files are relative to this t=0
-    Works identically in fmri and pc modes
-    RT is computed as self.clock.time - stim_onset (not key.rt)
-    Audio scheduling uses PTB absolute clock for sub-ms precision
-
-
-
-## Data Output
-
-```lua
-data/
-└── sub-01/
-    └── ses-01/
-        ├── flanker/
-        │   ├── sub-01_ses-01_task-flanker_run-01_events.csv
-        │   └── sub-01_ses-01_task-flanker_run-01_events_final.csv
-        ├── nback/
-        │   └── ...
-        └── logs/
-            └── sub-01_ses-01_20250101_120000.log
-
-    _events.csv — written trial-by-trial (crash-safe)
-    _events_final.csv — clean copy at end of session
-```
-
-## Emergency Exit
-    Action	What happens
-    Press Escape	Clean abort → data saved → ET data transferred → hardware closed
-    CTRL+C	Signal handler → emergency shutdown → same cleanup
-    Crash	atexit handler → best-effort cleanup
-
-Data is saved in all cases except power loss.
-
-## Requirements
-
-``` shell
-psychopy>=2023.1.0
-PyQt6>=6.5.0
-PyYAML>=6.0
-numpy>=1.21
-pyserial>=3.5
-```
+Sur une machine dépourvue de PsychoPy, les tests de logique peuvent utiliser
+`STROOP_HEADLESS_TESTS=1 QT_QPA_PLATFORM=offscreen python -m pytest -q`.
+Ils emploient alors une simulation des imports PsychoPy et une horloge virtuelle ;
+les tests de l'horloge PsychoPy réelle sont ignorés. Les tests Qt utilisent le vrai
+menu. La précision physique de l'affichage et les triggers nécessitent une
+vérification sur le poste d'acquisition.

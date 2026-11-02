@@ -50,32 +50,6 @@ QCheckBox::indicator {
     height: 14px;
 }
 
-QTabWidget::pane {
-    border: 1px solid #3c3c3c;
-    background-color: #1e1e1e;
-    top: -1px;
-}
-
-QTabBar::tab {
-    background-color: #2d2d2d;
-    color: #999999;
-    padding: 8px 18px;
-    border: 1px solid #3c3c3c;
-    border-bottom: none;
-    border-top-left-radius: 3px;
-    border-top-right-radius: 3px;
-    margin-right: 1px;
-}
-
-QTabBar::tab:selected {
-    background-color: #1e1e1e;
-    color: #e0e0e0;
-}
-
-QTabBar::tab:hover:!selected {
-    background-color: #252525;
-}
-
 QPushButton {
     background-color: #2d2d2d;
     color: #e0e0e0;
