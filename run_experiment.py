@@ -28,7 +28,7 @@ def main():
     from config.stroop_designs import design_for_run
     settings = ExperimentSettings(
         participant_id=str(args.subject), run=f'{args.run or 1:02d}',
-        mode=args.mode, fullscreen=(not args.no_fullscreen and args.mode == 'fmri'),
+        mode=args.mode, fullscreen=not args.no_fullscreen,
         screen_index=args.screen,
     )
     try:

@@ -57,9 +57,12 @@ Répondre à la couleur de l'encre en ignorant le sens du mot.
 
 | Encre | Mode PC | Mode fMRI |
 | --- | --- | --- |
-| Rouge | Flèche gauche | b |
+| Rouge | Flèche droite | b |
 | Bleu | Flèche bas | y |
-| Vert | Flèche droite | g |
+| Vert | Flèche gauche | g |
+
+Le mode PC est en plein écran, comme le mode fMRI. La flèche du milieu est
+la flèche bas.
 
 `s` valide les consignes et le bilan d'entraînement ; `t` est le trigger par défaut ;
 `Échap` interrompt le run et sauvegarde les essais terminés.

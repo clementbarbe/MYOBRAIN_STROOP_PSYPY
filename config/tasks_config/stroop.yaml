@@ -15,7 +15,7 @@ colors:
   bleu: [-1.0, -1.0, 1.0]
   vert: [-1.0, 0.8, -1.0]
 
-response_keys_pc: {rouge: left, bleu: down, vert: right}
+response_keys_pc: {rouge: right, bleu: down, vert: left}
 response_keys_fmri: {rouge: b, bleu: y, vert: g}
 
 # Seuil pratique de vérification, ajustable lors du pilotage.

@@ -62,7 +62,7 @@ class ExperimentMenu(QMainWindow):
         mode = self.combo_mode.currentText().lower()
         values = dict(
             participant_id=str(self.spin_subject.value()), run=f'{run:02d}',
-            mode=mode, fullscreen=(mode == 'fmri'),
+            mode=mode, fullscreen=True,
             screen_index=self.spin_scr.value(),
         )
         if self.initial_settings is not None:
