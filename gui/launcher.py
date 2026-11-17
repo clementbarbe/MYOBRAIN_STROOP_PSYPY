@@ -1,4 +1,4 @@
-"""Minimal Stroop launcher, with a design assigned by inclusion number."""
+"""Minimal Stroop launcher, for four independent pilot runs per subject."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import (
 )
 
 from config.settings import ExperimentSettings
-from config.stroop_designs import design_for_subject
+from config.stroop_designs import design_for_run
 from gui.styles import STYLESHEET
 from gui.task_panels import StroopPanel
 
@@ -56,13 +56,12 @@ class ExperimentMenu(QMainWindow):
         grid.addWidget(self.combo_mode, 2, 1)
         root.addLayout(grid)
         self.stroop_panel = StroopPanel(self)
-        self.spin_subject.valueChanged.connect(self.stroop_panel.update_design)
         root.addWidget(self.stroop_panel)
 
-    def validate(self) -> ExperimentSettings:
+    def validate(self, run: int = 1) -> ExperimentSettings:
         mode = self.combo_mode.currentText().lower()
         values = dict(
-            participant_id=str(self.spin_subject.value()), run='01',
+            participant_id=str(self.spin_subject.value()), run=f'{run:02d}',
             mode=mode, fullscreen=(mode == 'fmri'),
             screen_index=self.spin_scr.value(),
         )
@@ -70,13 +69,13 @@ class ExperimentMenu(QMainWindow):
             return replace(self.initial_settings, **values)
         return ExperimentSettings(**values)
 
-    def run_experiment(self, training: bool = False):
-        settings = self.validate()
-        design_id = 'training' if training else design_for_subject(settings.participant_id)
+    def run_experiment(self, training: bool = False, run: int = 1):
+        settings = self.validate(run)
+        design_id = 'training' if training else design_for_run(run)
         try:
             settings.run = settings.resolve_run('stroop', design_id)
         except (ValueError, FileExistsError) as error:
-            QMessageBox.warning(self, 'Sujet déjà enregistré', str(error))
+            QMessageBox.warning(self, 'Run déjà enregistré', str(error))
             return
         self.final_config = {'settings': settings, 'training': training}
         self.close()

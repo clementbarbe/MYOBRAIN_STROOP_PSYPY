@@ -30,8 +30,6 @@ def main():
                 print(f"\n[OK] Data saved: {saved}")
         finally:
             exp.cleanup()
-        if not config['training']:
-            return
 
 
 if __name__ == '__main__':

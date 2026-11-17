@@ -19,9 +19,8 @@ _COMMON: dict[str, dict] = {
     },
     'run': {
         'Description': (
-            '01 for the single acquisition of each subject. The schedule is '
-            'assigned by inclusion number: subject 1=A, 2=B, 3=C, 4=D, 5=A, etc. '
-            'Practice recordings have separate numbering.'
+            'Pilot acquisition: 01=E2_A, 02=E3_A, 03=E3_B, 04=E2_B. '
+            'Practice recordings have independent numbering.'
         ),
     },
     'trial': {
@@ -34,7 +33,7 @@ _COMMON: dict[str, dict] = {
         'LongName': 'Stimulus onset',
         'Description': (
             'Time of the stimulus window flip, in seconds since the first '
-            'scanner trigger. The experiment clock is reset the moment '
+            'retained functional-volume trigger (after configured discarded triggers). The clock is reset when '
             'that pulse is received, so this value is the time elapsed '
             'since the start of the functional acquisition. In practice, '
             'zero is the start of the training schedule (no scanner pulse). '
@@ -85,7 +84,7 @@ _COMMON: dict[str, dict] = {
     'block_idx': {'Description': 'Zero-based sequence index (legacy alias).'},
     'trial_idx': {'Description': 'Zero-based trial index within the sequence (legacy alias).'},
     'design_id': {
-        'Description': 'Fixed schedule variant: A, B, C, D, or training.',
+        'Description': 'Fixed pilot schedule: E2_A, E3_A, E3_B, E2_B, or training.',
     },
     'design_name': {
         'Description': 'Human-readable design name.',
@@ -173,7 +172,7 @@ _BY_TASK: dict[str, dict] = {
         },
         'correct_color': {'Description': 'Colour name of the required response.'},
         'response_color': {'Description': 'Colour name of the key pressed.'},
-        'variant': {'Description': 'Variant of the source TSV: A/B/C/D, or training.'},
+        'variant': {'Description': 'Pilot design identifier, or training.'},
         'training': {'Description': '1 for practice, 0 for an acquisition run.'},
         'training_phase': {'Description': 'guided_mapping, memory_mapping, stroop, or acquisition.'},
         'stimulus_kind': {'Description': 'patch (training only) or word.'},
@@ -186,6 +185,20 @@ _BY_TASK: dict[str, dict] = {
         'transition': {'Description': 'Previous condition -> current condition.'},
         'planned_onset': {'Description': 'Stimulus onset in the source schedule.', 'Units': 's'},
         'planned_duration': {'Description': 'Stimulus duration in the source schedule.', 'Units': 's'},
+        'stimulus_offset': {'Description': 'Measured stimulus offset flip, since the retained-volume trigger.', 'Units': 's'},
+        'response_window_sec': {'Description': 'Response window specified by the TSV; the word remains visible after a response.', 'Units': 's'},
+        'response_deadline': {'Description': 'Actual closing time of the response window, since the trigger.', 'Units': 's'},
+        'planned_response_deadline': {'Description': 'Response deadline in the reference TSV.', 'Units': 's'},
+        'planned_stimulus_offset': {'Description': 'Stimulus offset in the reference TSV.', 'Units': 's'},
+        'planned_not_acquired': {'Description': '0 for these acquired events; reference TSV files use 1.'},
+        'source_design': {'Description': 'Full design identifier copied from the reference TSV.'},
+        'source_seed': {'Description': 'Seed recorded in the optimized reference TSV; never used to regenerate it at runtime.'},
+        'source_phase': {'Description': 'Phase index in the reference TSV.'},
+        'source_block': {'Description': 'Block annotation in the reference TSV, independent of runtime sequence indexing.'},
+        'stimulus_set': {'Description': 'Stimulus-set label from the reference TSV.'},
+        'context': {'Description': 'Context label from the reference TSV.'},
+        'run_duration_sec': {'Description': 'Planned task duration, including initial and final fixation; excludes volume padding.', 'Units': 's'},
+        'blank_after_response': {'Description': '0: a response does not end the stimulus presentation early.', 'Units': 's'},
         'onset_error': {'Description': 'Actual onset minus planned onset.', 'Units': 's'},
         'planned_fixation_onset': {'Description': 'Fixation onset in the source schedule.', 'Units': 's'},
         'fixation_after_sec': {'Description': 'Fixation duration following this stimulus in the TSV.', 'Units': 's'},

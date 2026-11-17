@@ -9,7 +9,7 @@ import main
 def test_training_then_run_reopens_menu_with_settings_and_cleans_up(monkeypatch, tmp_path):
     settings = ExperimentSettings(participant_id='5', data_root=tmp_path)
     choices = iter(({'settings': settings, 'training': True},
-                    {'settings': settings, 'training': False}))
+                    {'settings': settings, 'training': False}, None))
     events = []
 
     def show_menu(previous):
@@ -28,7 +28,7 @@ def test_training_then_run_reopens_menu_with_settings_and_cleans_up(monkeypatch,
     monkeypatch.setattr('core.experiment.Experiment', Experiment)
     main.main()
     assert events == [('menu', None), ('execute', True), ('cleanup', None),
-                      ('menu', settings), ('execute', False), ('cleanup', None)]
+                      ('menu', settings), ('execute', False), ('cleanup', None), ('menu', settings)]
 
 
 def test_closing_reopened_menu_ends_after_training(monkeypatch, tmp_path):

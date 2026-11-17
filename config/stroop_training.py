@@ -14,7 +14,7 @@ STROOP_TRIALS = 9
 TRAINING_TRIALS = TRIALS_PER_MAPPING_PHASE * 2 + STROOP_TRIALS
 
 
-def training_trials(variant: str = 'A') -> list[dict]:
+def training_trials(variant: str = 'E2_A') -> list[dict]:
     """20 s discovery, two 54 s mapping stages, then real-format Stroop."""
     trials = []
     elapsed = DISCOVERY_DURATION
@@ -54,6 +54,11 @@ def training_trials(variant: str = 'A') -> list[dict]:
                 'show_mapping': phase == 'guided_mapping',
                 'show_feedback': phase != 'stroop',
                 'trial_type': source['condition'], 'onset': round(elapsed, 4),
+                'response_window_sec': source.get('response_window_sec', source['duration']),
+                'response_deadline': round(elapsed + source.get('response_window_sec', source['duration']), 4),
+                'stimulus_offset': round(elapsed + source['duration'], 4),
+                'response_window': source.get('response_window_sec', source['duration']),
+                'planned_not_acquired': 1,
                 'fixation_onset': round(elapsed + source['duration'], 4),
                 'previous_condition': previous,
                 'transition': f'{previous}->{source["condition"]}',

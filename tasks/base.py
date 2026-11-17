@@ -56,7 +56,7 @@ class BaseTask(ABC):
         settings: ExperimentSettings,
         scanner: ScannerConfig,
         task_config: dict,
-        design_id: str = 'A',
+        design_id: str = 'E2_A',
     ):
         """
         Args:
@@ -307,6 +307,10 @@ class BaseTask(ABC):
         self.win.flip()
         self.logger.log(f"Waiting for trigger '{trigger_key}'...")
 
+        discarded = 0
+        discard_count = self.task_config.get('discard_initial_triggers', 0)
+        if isinstance(discard_count, bool) or not isinstance(discard_count, int) or discard_count < 0:
+            raise TaskError('discard_initial_triggers doit être un entier positif ou nul.')
         while True:
             self._instruction_stim.draw()
             self.win.flip()
@@ -321,6 +325,10 @@ class BaseTask(ABC):
                     )
 
                 if k.name == trigger_key:
+                    if discarded < discard_count:
+                        discarded += 1
+                        self.logger.log(f'Trigger préparatoire ignoré : {discarded}/{discard_count}')
+                        continue
                     # ── t = 0 ────────────────────────────────────────
                     self.clock.reset()
                     self.flush_keyboard()
@@ -573,9 +581,10 @@ class BaseTask(ABC):
             'design_id': self.design_id,
             'trigger_key': self.scanner.trigger_key,
             'trigger_wall_time': self.clock.trigger_wall_time,
+            'discard_initial_triggers': self.task_config.get('discard_initial_triggers', 0),
             'onset_reference': (
-                'first scanner trigger; every onset in the events file is '
-                'expressed in seconds since this pulse'
+                'first retained functional-volume trigger; every onset in the events file is '
+                'expressed in seconds since this pulse; REV_PE is excluded'
             ),
             'n_triggers': len(trig),
             'tr_measured': round(tr, 4),

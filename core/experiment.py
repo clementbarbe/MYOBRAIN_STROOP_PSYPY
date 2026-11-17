@@ -15,7 +15,7 @@ from config.settings import ExperimentSettings
 from config.scanners import get_scanner
 from config.scanners.base import ScannerConfig
 from config.tasks_config import load_task_config
-from config.stroop_designs import design_for_subject
+from config.stroop_designs import design_for_run
 from config.constants import BG_COLOR
 from core.clock import ExperimentClock
 from core.events import EventBus
@@ -83,8 +83,8 @@ class Experiment:
         return win
 
     def run_stroop(self, training: bool = False) -> Path | None:
-        """Derive the design from the inclusion number; one acquisition per subject."""
-        design_id = 'training' if training else design_for_subject(self.settings.participant_id)
+        """Run the selected pilot acquisition, independently of the subject number."""
+        design_id = 'training' if training else design_for_run(self.settings.run)
         self.settings.run = self.settings.resolve_run('stroop', design_id)
         task_config = load_task_config('stroop')
         task_cls = get_task('stroop')

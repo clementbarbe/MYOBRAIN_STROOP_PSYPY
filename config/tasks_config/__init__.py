@@ -13,4 +13,8 @@ def load_task_config(task_name: str = 'stroop', config_dir: Path | None = None) 
         config = yaml.safe_load(stream)
     if not isinstance(config, dict) or not config.get('designs'):
         raise ValueError(f'Configuration Stroop invalide : {path}')
+    from config.stroop_designs import load_design
+    for design_id, design in config['designs'].items():
+        if design_id != 'training':
+            design['blocks'] = [{'condition': 'mixed', 'n_trials': len(load_design(design_id))}]
     return config

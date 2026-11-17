@@ -1,4 +1,4 @@
-"""Stroop task driven by the supplied A/B/C/D schedules."""
+"""Stroop task driven by the four supplied E2/E3 pilot schedules."""
 
 from __future__ import annotations
 
@@ -7,8 +7,8 @@ import json
 
 from psychopy import visual
 
-from config.constants import PROJECT_ROOT, TTL_START_EXP
-from config.stroop_designs import design_for_subject, load_design
+from config.constants import TTL_START_EXP
+from config.stroop_designs import design_for_run, design_path, load_design, acquisition_timing
 from config.stroop_training import (
     training_trials, assess_training, DISCOVERY_DURATION, PHASES,
 )
@@ -46,10 +46,10 @@ class StroopTask(BaseTask):
 
     def prepare(self) -> None:
         """Read the fixed schedule before waiting for the scanner."""
-        if not self.training and self.design_id != design_for_subject(self.settings.participant_id):
-            raise TaskError('Le design ne correspond pas au numéro d’inclusion du sujet.')
+        if not self.training and self.design_id != design_for_run(self.settings.run):
+            raise TaskError('Le design ne correspond pas au run sélectionné.')
         try:
-            trials = (training_trials(design_for_subject(self.settings.participant_id))
+            trials = (training_trials(self.task_config['training'].get('reference_design', 'E2_A'))
                       if self.training else load_design(self.design_id))
         except (OSError, ValueError, KeyError) as error:
             raise TaskError(str(error)) from error
@@ -59,14 +59,15 @@ class StroopTask(BaseTask):
         self._schedule = trials
         last = trials[-1]
         self._schedule_end = last['fixation_onset'] + last['fixation_after_sec']
-        self._final_rest_duration = (0.0 if self.training else
-                                     float(self.task_config.get('final_rest_duration', 10.0)))
-        self._run_end = self._schedule_end + self._final_rest_duration
+        self._timing = (None if self.training else acquisition_timing(
+            trials, float(self.task_config['repetition_time_sec'])))
+        self._run_end = (self._schedule_end if self.training else
+                         self._timing['acquisition_duration'])
         self._write_design_sidecar()
         self.logger.ok(f'Design {self.design_id} : {len(trials)} essais, {self._run_end:.2f}s')
 
     def _write_design_sidecar(self, **kwargs) -> None:
-        source = None if self.training else PROJECT_ROOT / f'stroop_design_{self.design_id}.tsv'
+        source = None if self.training else design_path(self.design_id)
         payload = {
             'subject': self.settings.participant_id,
             'run': self.settings.run, 'design_id': self.design_id,
@@ -75,9 +76,11 @@ class StroopTask(BaseTask):
             'source_sha256': hashlib.sha256(source.read_bytes()).hexdigest() if source else None,
             'duration': self._run_end, 'response_keys': self._color_to_key,
             'schedule_duration': self._schedule_end,
-            'final_rest_duration': self._final_rest_duration,
-            'planned_final_rest_onset': self._schedule_end if not self.training else None,
-            'response_window': 'stimulus presentation only',
+            'acquisition_timing': self._timing,
+            'source_metadata_status': 'planned_not_acquired=1 in reference TSV',
+            'onset_reference': 'first retained functional volume; REV_PE excluded',
+            'discard_initial_triggers': self.task_config.get('discard_initial_triggers', 0),
+            'response_window': 'response_window_sec from TSV; stimulus remains visible after a response',
             'schedule': self._schedule,
             'training_accuracy_threshold': (self.task_config['training']['accuracy_threshold']
                                             if self.training else None),
@@ -103,7 +106,7 @@ class StroopTask(BaseTask):
                 f'{self.ADVANCE_PROMPT}'
             )
         return (
-            f'STROOP — Sujet {self.settings.participant_id} / Design {self.design_id}\n\n'
+            f'STROOP — Sujet {self.settings.participant_id} / Run {self.settings.run} / {self.design_id}\n\n'
             'Indiquez la COULEUR DE L’ENCRE. Ignorez le sens du mot.\n\n'
             f'{keys}\n\n'
             'Répondez pendant l’affichage du mot,\nle plus vite et précisément possible.\n'
@@ -170,7 +173,7 @@ class StroopTask(BaseTask):
             self.get_keys(key_list=[])
 
     def run_rest(self, label='', duration=None) -> None:
-        # Preserve all TSV fixations, then keep fixation for the extra RUN rest.
+        # Keep the complete TSV final fixation, then pad to the last full scanner volume.
         if self.training and label == 'initial':
             self._run_discovery()
         if label == 'final':
@@ -202,7 +205,8 @@ class StroopTask(BaseTask):
         )
         response = None
         rt = None
-        response_deadline = offset
+        response_window = trial.get('response_window_sec', trial['duration'])
+        response_deadline = actual_onset + response_window
 
         def poll_response():
             nonlocal response, rt
@@ -231,7 +235,7 @@ class StroopTask(BaseTask):
         self._draw_interval(next_onset)
         self.win.flip()
         actual_offset = self.clock.time
-        response_deadline = actual_offset
+        response_deadline = min(actual_onset + response_window, actual_offset)
         # Retrieve presses from the final displayed frame before the next
         # fixation poll can discard them.
         poll_response()
@@ -261,6 +265,20 @@ class StroopTask(BaseTask):
             'temporal_window': trial['temporal_window'], 'is_long_null': trial['is_long_null'],
             'previous_condition': trial['previous_condition'], 'transition': trial['transition'],
             'planned_onset': onset, 'planned_duration': trial['duration'],
+            'stimulus_offset': round(actual_offset, 6),
+            'response_window_sec': response_window,
+            'response_deadline': round(response_deadline, 6),
+            'planned_response_deadline': trial.get('response_deadline', onset + response_window),
+            'planned_stimulus_offset': trial.get('stimulus_offset', offset),
+            'planned_not_acquired': 0,
+            'source_design': trial.get('design'),
+            'source_seed': trial.get('seed'),
+            'source_phase': trial.get('phase'),
+            'source_block': trial.get('block'),
+            'stimulus_set': trial.get('stimulus_set'),
+            'context': trial.get('context'),
+            'run_duration_sec': self._schedule_end,
+            'blank_after_response': 0.0,
             'onset_error': round(actual_onset - onset, 6),
             'fixation_onset': round(actual_offset, 6),
             'planned_fixation_onset': offset, 'fixation_after_sec': trial['fixation_after_sec'],

@@ -14,7 +14,7 @@ def test_only_stroop_registered():
 
 def test_stroop_configuration():
     cfg = load_task_config('stroop')
-    assert set(cfg['designs']) == {'A', 'B', 'C', 'D', 'training'}
+    assert set(cfg['designs']) == {'E2_A', 'E3_A', 'E3_B', 'E2_B', 'training'}
     assert cfg['response_keys_fmri'] == {'rouge': 'b', 'bleu': 'y', 'vert': 'g'}
 
 

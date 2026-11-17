@@ -7,6 +7,7 @@ import json
 import pytest
 
 from config.scanners.base import ScannerConfig
+from config.stroop_designs import DESIGNS, run_for_design
 from config.settings import ExperimentSettings
 from config.tasks_config import load_task_config
 from core.events import EventBus
@@ -42,11 +43,11 @@ class VirtualWindow:
 def task_factory(tmp_path):
     writers = []
 
-    def build(variant='A', mode='pc'):
+    def build(variant='E2_A', mode='pc'):
         clock = VirtualClock()
         settings = ExperimentSettings(participant_id='001', run='01', mode=mode, data_root=tmp_path)
-        if variant in 'ABCD':
-            settings.participant_id = f'{"ABCD".index(variant) + 1:03d}'
+        if variant in DESIGNS:
+            settings.run = f'{run_for_design(variant):02d}'
         writer = DataWriter(settings.task_dir(), settings.base_name('stroop', variant), MagicMock())
         writers.append(writer)
         task = StroopTask(
@@ -67,13 +68,13 @@ def task_factory(tmp_path):
         writer.close()
 
 
-@pytest.mark.parametrize('variant', list('ABCD'))
+@pytest.mark.parametrize('variant', DESIGNS)
 def test_all_trials_follow_absolute_deadlines(task_factory, variant):
     task = task_factory(variant)
     task.run_block(0, task.block_sequence[0])
     task.run_rest('final')
     rows = task.data_writer.records
-    assert len(rows) == 75
+    assert len(rows) == (150 if variant.startswith('E2') else 120)
     for row, planned in zip(rows, task._schedule):
         assert abs(row['onset'] - planned['onset']) < 2 / 60
         assert abs(row['duration'] - planned['duration']) < 2 / 60
@@ -81,14 +82,20 @@ def test_all_trials_follow_absolute_deadlines(task_factory, variant):
         assert row['condition'] == planned['condition']
         assert row['response'] is None and row['RT'] is None
         assert row['correct'] == 0
+        assert row['planned_not_acquired'] == 0
+        assert row['source_design'] == planned['design']
+        assert row['source_seed'] == planned['seed']
+        assert row['response_window_sec'] == 2.0
+        assert row['planned_response_deadline'] == planned['response_deadline']
+        assert row['planned_stimulus_offset'] == planned['stimulus_offset']
     last = task._schedule[-1]
     schedule_end = last['fixation_onset'] + last['fixation_after_sec']
-    assert abs(task.clock.time - (schedule_end + 10.0)) < 2 / 60
+    assert abs(task.clock.time - 520.29) < 2 / 60
     sidecar = next(task.settings.task_dir().glob('*_design.json'))
     timing = json.loads(sidecar.read_text())
     assert timing['schedule_duration'] == pytest.approx(schedule_end)
-    assert timing['final_rest_duration'] == 10.0
-    assert timing['duration'] == pytest.approx(schedule_end + 10.0)
+    assert timing['acquisition_timing']['final_fixation_duration'] == 15.0
+    assert timing['duration'] == pytest.approx(520.29)
     assert task.data_writer.save_final().exists()
 
 
@@ -112,6 +119,7 @@ def test_response_uses_ink_and_keyboard_timestamp(task_factory, mode):
     assert row['response'] == expected
     assert row['correct'] == 1
     assert row['RT'] == pytest.approx(0.3, abs=2 / 60)
+    assert row['duration'] == pytest.approx(2.0, abs=2 / 60)
     assert task.clock.time < trial['onset'] + trial['duration'] + 2 / 60
 
 
@@ -214,7 +222,7 @@ def test_reused_trigger_keyboard_uses_task_clock(task_factory, monkeypatch, mode
 
     device = ReusedKeyboard()
     monkeypatch.setattr('tasks.base.keyboard', SimpleNamespace(Keyboard=lambda **kwargs: device))
-    task = task_factory('training' if training else 'A', mode=mode)
+    task = task_factory('training' if training else 'E2_A', mode=mode)
     task.get_keys = StroopTask.get_keys.__get__(task, StroopTask)
     if training:
         task.wait_for_trigger()
@@ -272,7 +280,7 @@ def test_stroop_familiarisation_has_no_hints_or_feedback(task_factory):
     task._training_view.draw_box.assert_not_called()
     task._feedback.draw.assert_not_called()
     assert record['mapping_visible'] == record['feedback_enabled'] == 0
-    assert record['stimulus_kind'] == 'word' and record['planned_duration'] == 1.2
+    assert record['stimulus_kind'] == 'word' and record['planned_duration'] == 2.0
 
 
 def test_full_training_records_acquisition_report(task_factory):
@@ -291,8 +299,42 @@ def test_run_logs_condition_summary_once_after_acquisition(task_factory):
     task.show_text_and_wait = lambda text: None
     task.wait_for_trigger = lambda: task.clock.reset()
     saved = task.run()
-    assert saved.exists() and len(task.data_writer.records) == 75
+    assert saved.exists() and len(task.data_writer.records) == 150
     lines = [call.args[0] for call in task.logger.log.call_args_list]
     summaries = [line for line in lines if line.startswith('BILAN STROOP')]
-    assert len(summaries) == 1 and '75/75 essais acquis' in summaries[0]
+    assert len(summaries) == 1 and '150/150 essais acquis' in summaries[0]
     assert any(line.startswith('Incongruent - Congruent : TR n/a') for line in lines)
+
+
+@pytest.mark.parametrize('mode', ['pc', 'fmri'])
+def test_response_after_old_1_2_second_cutoff_is_accepted(task_factory, mode):
+    task = task_factory(mode=mode)
+    trial = task._schedule[0]
+    expected = task._color_to_key[trial['ink_color']]
+    sent = False
+
+    def keys(key_list=None):
+        nonlocal sent
+        timestamp = trial['onset'] + 1.7
+        if key_list and expected in key_list and not sent and task.clock.time >= timestamp:
+            sent = True
+            return [SimpleNamespace(name=expected, rt=timestamp)]
+        return []
+
+    task.get_keys = keys
+    record = task.run_trial(trial, 0, 0, task.block_sequence[0])
+    assert record['correct'] == 1 and record['response'] == expected
+    assert record['RT'] == pytest.approx(1.7, abs=2 / 60)
+    assert record['duration'] == pytest.approx(2.0, abs=2 / 60)
+
+
+def test_preparatory_triggers_are_excluded_from_time_zero(task_factory):
+    task = task_factory()
+    task.task_config['discard_initial_triggers'] = 2
+    task.clock.reset = MagicMock(wraps=task.clock.reset)
+    task._keyboard = MagicMock()
+    task._keyboard.getKeys.side_effect = [[SimpleNamespace(name='t')] for _ in range(3)]
+    task.wait_for_trigger()
+    assert task._keyboard.getKeys.call_count == 3
+    task.clock.reset.assert_called_once()
+    assert task.clock.time == 0 and task.volume_triggers == [0.0]

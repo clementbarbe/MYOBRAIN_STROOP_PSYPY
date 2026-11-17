@@ -1,8 +1,11 @@
 task_name: stroop
 display_name: Stroop
 
-# Fixation ajoutée après la dernière fixation du TSV, uniquement pour le RUN.
-final_rest_duration: 10.0
+# Les 15 s de fixation finale sont déjà incluses dans les TSV.
+# Seul le complément au dernier volume entier est ajouté.
+repetition_time_sec: 1.23
+# Nombre de triggers précédant le premier volume conservé (0 par défaut).
+discard_initial_triggers: 0
 
 stimulus:
   word_height: 0.15
@@ -18,6 +21,7 @@ response_keys_fmri: {rouge: b, bleu: y, vert: g}
 # Seuil pratique de vérification, ajustable lors du pilotage.
 training:
   accuracy_threshold: 0.8
+  reference_design: E2_A
 
 ttl_codes:
   stim_congruent: 110
@@ -28,8 +32,8 @@ ttl_codes:
 
 # L'ordre, les onsets, les durées et les fixations viennent des TSV.
 designs:
-  A: {name: 'Stroop A', paradigm: event, blocks: [{condition: mixed, n_trials: 75}]}
-  B: {name: 'Stroop B', paradigm: event, blocks: [{condition: mixed, n_trials: 75}]}
-  C: {name: 'Stroop C', paradigm: event, blocks: [{condition: mixed, n_trials: 75}]}
-  D: {name: 'Stroop D', paradigm: event, blocks: [{condition: mixed, n_trials: 75}]}
+  E2_A: {name: 'E2_A — run 1', paradigm: event}
+  E3_A: {name: 'E3_A — run 2', paradigm: event}
+  E3_B: {name: 'E3_B — run 3', paradigm: event}
+  E2_B: {name: 'E2_B — run 4', paradigm: event}
   training: {name: 'Entraînement Stroop', paradigm: event, blocks: [{condition: mixed, n_trials: 45}]}

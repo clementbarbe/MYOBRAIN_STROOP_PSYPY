@@ -1,4 +1,4 @@
-"""Stroop settings: one acquisition per subject, separate practice recordings."""
+"""Pilot settings: four independent acquisitions per subject, separate practice recordings."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from config.constants import DATA_DIR
-from config.stroop_designs import design_for_subject, inclusion_number
+from config.stroop_designs import inclusion_number, run_for_design
 
 
 @dataclass
@@ -50,13 +50,11 @@ class ExperimentSettings:
                 if not any(directory.glob(f'{stem}_*')):
                     return run
             raise ValueError('Trop d’entraînements déjà enregistrés.')
-        if design_id != design_for_subject(self.participant_id):
-            raise ValueError('Le design ne correspond pas au numéro d’inclusion du sujet.')
-        # Each subject has a single acquisition, regardless of variant or old run number.
+        run = f'{run_for_design(design_id):02d}'
         if any('_design-training_' not in path.name
-               for path in directory.glob('*_design-*_*')):
+               for path in directory.glob(f'*_run-{run}_*')):
             raise FileExistsError(
-                f'Une acquisition existe déjà pour le sujet {self.participant_id}. '
+                f'Le run {run} du sujet {self.participant_id} existe déjà. '
                 'Les données existantes sont conservées.'
             )
-        return '01'
+        return run
