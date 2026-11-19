@@ -13,6 +13,7 @@ from config.stroop_training import (
     training_trials, assess_training, DISCOVERY_DURATION, PHASES,
 )
 from core.exceptions import TaskError
+from config.input_keys import response_keys
 from tasks.base import BaseTask
 from tasks.registry import register_task
 
@@ -29,8 +30,10 @@ class StroopTask(BaseTask):
             pos=(0, 0), bold=True, font='monospace',
         )
         self._color_rgb = cfg['colors']
-        key_source = 'response_keys_fmri' if self.settings.mode == 'fmri' else 'response_keys_pc'
-        self._color_to_key = cfg[key_source]
+        try:
+            self._color_to_key = response_keys(cfg, self.settings.mode, self.scanner.trigger_key)
+        except ValueError as error:
+            raise TaskError(str(error)) from error
         self._key_to_color = {key: color for color, key in self._color_to_key.items()}
         self._valid_keys = list(self._key_to_color)
         self._ttl = cfg['ttl_codes']
@@ -205,13 +208,16 @@ class StroopTask(BaseTask):
         )
         response = None
         rt = None
+        response_events = []
         response_window = trial.get('response_window_sec', trial['duration'])
         response_deadline = actual_onset + response_window
 
         def poll_response():
             nonlocal response, rt
             keys = self.get_keys(key_list=self._valid_keys + (['r'] if trial.get('show_mapping') else []))
-            for key in keys:
+            # Several buttons can arrive in the same poll. Score the earliest
+            # timestamp; exact ties keep the keyboard backend's arrival order.
+            for key in sorted(keys, key=lambda event: event.rt):
                 if trial.get('show_mapping'):
                     self._training_view.flash(key.name, self.clock.time)
                 if key.name not in self._valid_keys:
@@ -219,11 +225,13 @@ class StroopTask(BaseTask):
                 # Keyboard.rt shares the experiment clock; use the event time,
                 # so a late poll never turns a pre-onset press into a response.
                 timestamp = key.rt
-                if response is None and actual_onset <= timestamp < response_deadline:
-                    response = key.name
-                    rt = timestamp - actual_onset
-                    code = 'response_correct' if response == correct_key else 'response_incorrect'
-                    self.hardware.send_trigger(self._ttl[code])
+                if actual_onset <= timestamp < response_deadline:
+                    response_events.append((key.name, timestamp - actual_onset))
+                    if response is None:
+                        response = key.name
+                        rt = timestamp - actual_onset
+                        code = 'response_correct' if response == correct_key else 'response_incorrect'
+                        self.hardware.send_trigger(self._ttl[code])
 
         while self.clock.time < offset - self.scanner.frame_duration / 2:
             poll_response()
@@ -253,6 +261,11 @@ class StroopTask(BaseTask):
             'word': trial['word'], 'ink_color': ink, 'correct_response': correct_key,
             'response': response, 'correct': int(correct),
             'RT': round(rt, 6) if rt is not None else None,
+            'n_responses': len(response_events),
+            'multiple_responses': int(len(response_events) > 1),
+            'multiple_buttons': int(len({key for key, _ in response_events}) > 1),
+            'response_keys': '|'.join(key for key, _ in response_events),
+            'response_RTs': '|'.join(f'{latency:.6f}' for _, latency in response_events),
             'responded': int(response is not None),
             'is_error': int(response is not None and not correct), 'is_miss': int(response is None),
             'response_color': self._key_to_color.get(response), 'correct_color': ink,

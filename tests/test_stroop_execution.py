@@ -2,6 +2,7 @@
 
 from types import SimpleNamespace
 from unittest.mock import MagicMock
+import csv
 import json
 
 import pytest
@@ -338,3 +339,104 @@ def test_preparatory_triggers_are_excluded_from_time_zero(task_factory):
     assert task._keyboard.getKeys.call_count == 3
     task.clock.reset.assert_called_once()
     assert task.clock.time == 0 and task.volume_triggers == [0.0]
+
+
+def test_reassigned_r_key_flashes_active_color_not_unused_button(task_factory):
+    task = task_factory('training', mode='fmri')
+    from tasks.button_box import ButtonBoxView
+    view = ButtonBoxView(task.win, {'rouge': 'r', 'bleu': 'y', 'vert': 'g'}, task._color_rgb)
+    view.flash('r', 1.0)
+    assert set(view.flash_until) == {0}
+    assert view.unused_key is None
+
+
+def test_trigger_can_be_changed_in_single_yaml_setting(task_factory):
+    task = task_factory()
+    task.task_config['trigger_key'] = '5'
+    from dataclasses import replace
+    # Construct another task with a scanner profile still using t.
+    changed = StroopTask(
+        win=task.win, clock=task.clock, hardware=task.hardware,
+        data_writer=task.data_writer, logger=task.logger, event_bus=task.event_bus,
+        settings=task.settings, scanner=replace(task.scanner, trigger_key='t'),
+        task_config=task.task_config, design_id=task.design_id,
+    )
+    assert changed.scanner.trigger_key == '5'
+    changed._keyboard = MagicMock()
+    changed._keyboard.getKeys.return_value = [SimpleNamespace(name='5', rt=.2)]
+    changed._monitor_volume_triggers = True
+    assert changed.get_keys(key_list=changed._valid_keys) == []
+    assert changed.volume_triggers == [.2]
+
+
+@pytest.mark.parametrize('mode', ['pc', 'fmri'])
+@pytest.mark.parametrize('scenario', ['reversed_batch', 'simultaneous', 'later_correction', 'repeat'])
+def test_multiple_presses_score_first_and_preserve_all_events(task_factory, mode, scenario):
+    task = task_factory(mode=mode)
+    trial = task._schedule[0]
+    correct = task._color_to_key[trial['ink_color']]
+    other = next(key for key in task._valid_keys if key != correct)
+    first, second = (correct, correct) if scenario == 'repeat' else (other, correct)
+    rts = [.3, .3 if scenario == 'simultaneous' else .6]
+    # Deliberately return a batch in reverse order to check event-time scoring.
+    batches = [[(first, rts[0]), (second, rts[1])]]
+    if scenario == 'reversed_batch':
+        batches[0].reverse()
+    elif scenario == 'later_correction':
+        batches = [[(first, rts[0])], [(second, rts[1])]]
+    actual_onset = None
+
+    def keys(key_list=None):
+        nonlocal actual_onset
+        if not key_list:
+            return []
+        # The first response poll immediately follows the onset display flip.
+        if actual_onset is None:
+            actual_onset = task.clock.time
+        if batches and task.clock.time >= actual_onset + max(rt for _, rt in batches[0]):
+            return [SimpleNamespace(name=key, rt=actual_onset + rt)
+                    for key, rt in batches.pop(0)]
+        return []
+
+    task.get_keys = keys
+    row = task.run_trial(trial, 0, 0, task.block_sequence[0])
+    task.data_writer.write_trial(row)
+    final = task.data_writer.save_final()
+    assert row['response'] == first
+    assert row['RT'] == pytest.approx(.3, abs=1e-6)
+    assert row['correct'] == int(first == correct)
+    assert row['n_responses'] == 2 and row['multiple_responses'] == 1
+    assert row['multiple_buttons'] == int(scenario != 'repeat')
+    assert row['response_keys'] == f'{first}|{second}'
+    assert [float(rt) for rt in row['response_RTs'].split('|')] == rts
+    assert row['duration'] == pytest.approx(2.0, abs=2 / 60)
+    with final.open() as stream:
+        saved = list(csv.DictReader(stream, delimiter='\t'))
+    assert len(saved) == 1
+    assert saved[0]['response'] == first and saved[0]['multiple_responses'] == '1'
+    assert saved[0]['response_keys'] == f'{first}|{second}'
+    assert final.read_bytes() == task.data_writer.filepath.read_bytes()
+    response_codes = {task._ttl['response_correct'], task._ttl['response_incorrect']}
+    assert sum(call.args[0] in response_codes for call in task.hardware.send_trigger.call_args_list) == 1
+
+
+def test_four_complete_runs_for_same_subject_keep_independent_files(task_factory):
+    saved_runs = {}
+    for design in DESIGNS:
+        task = task_factory(design, mode='fmri')
+        task.show_text_and_wait = lambda text: None
+        task.wait_for_trigger = lambda: None
+        final = task.run()
+        assert final is not None
+        with final.open() as stream:
+            rows = list(csv.DictReader(stream, delimiter='\t'))
+        assert len(rows) == (150 if design.startswith('E2') else 120)
+        assert {row['run'] for row in rows} == {f'{run_for_design(design):02d}'}
+        assert {row['design_id'] for row in rows} == {design}
+        assert final.read_bytes() == task.data_writer.filepath.read_bytes()
+        saved_runs[final] = final.read_bytes()
+        with pytest.raises(FileExistsError):
+            task.settings.resolve_run('stroop', design)
+    assert len(saved_runs) == 4
+    for path, content in saved_runs.items():
+        assert path.read_bytes() == content

@@ -1,6 +1,7 @@
 """Preserve every supplied pilot event, with no runtime resampling."""
 
 import csv
+import json
 from collections import Counter
 
 import pytest
@@ -100,3 +101,26 @@ def test_padding_does_not_add_an_extra_volume_to_an_exact_tr_boundary():
         row['run_duration_sec'] = 492.0  # 400 * 1.23
     timing = acquisition_timing(rows)
     assert timing['n_volumes'] == 400 and timing['padding_duration'] == 0
+
+
+@pytest.mark.parametrize('design', DESIGNS)
+def test_neutral_expansion_preserves_every_other_source_cell(design):
+    path = design_path(design)
+    versions = path.parent / 'design_versions'
+    manifest = json.loads((versions / '2026-11-19_neutral_expansion.json').read_text())
+    previous = versions / '2026-11-19_before_neutral_expansion' / path.name
+    with path.open() as stream, previous.open() as old_stream:
+        rows = list(csv.DictReader(stream, delimiter='\t'))
+        old_rows = list(csv.DictReader(old_stream, delimiter='\t'))
+    assert len(rows) == len(old_rows)
+    for row, old in zip(rows, old_rows):
+        for field in row:
+            if old['condition'] != 'neutral' or field not in ('word', 'stimulus'):
+                assert row[field] == old[field]
+    neutral = [row for row in rows if row['condition'] == 'neutral']
+    counts = Counter(row['word'] for row in neutral)
+    assert set(counts) == set(manifest['neutral_words']) and len(counts) == 12
+    assert max(counts.values()) - min(counts.values()) <= 1
+    assert set(Counter(row['ink_color'] for row in neutral).values()) == {len(neutral) // 3}
+    assert max(Counter((row['word'], row['ink_color']) for row in neutral).values()) == 1
+    assert all(a['word'] != b['word'] for a, b in zip(neutral, neutral[1:]))

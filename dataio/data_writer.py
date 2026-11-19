@@ -4,7 +4,7 @@ Incremental TSV writer with atomic final save.
 Design goals
 ------------
 crash-safe   : every trial is flushed to disk immediately
-no overwrite : the caller resolves a free filename beforehand
+no overwrite : reserve each recording exclusively before any trial/sidecar
 BIDS-friendly: tab-separated, 'n/a' for missing values,
                stable column order starting with onset/duration/trial_type
 verifiable   : row count is re-read and checked after the final save
@@ -13,8 +13,11 @@ verifiable   : row count is re-read and checked after the final save
 from __future__ import annotations
 
 import csv
+import json
 import os
+import shutil
 from copy import deepcopy
+from datetime import datetime, timezone
 from pathlib import Path
 
 from dataio.logger import ExperimentLogger
@@ -68,7 +71,7 @@ class DataWriter:
         """
         Args:
             output_dir: destination directory (created if needed)
-            filename:   stem without extension, already collision-free
+            filename:   stem without extension, reserved exclusively here
             logger:     experiment logger
         """
         self._dir = Path(output_dir)
@@ -82,6 +85,7 @@ class DataWriter:
         self._path: Path | None = None
         self._n_written = 0
         self._closed = False
+        self._reserve()
 
     # ── Public API ───────────────────────────────────────────────────
 
@@ -106,13 +110,16 @@ class DataWriter:
             self._n_written += 1
         except Exception as e:
             self._logger.err(f"TSV write error at trial {len(self._records)}: {e}")
+            # Stop acquisition rather than silently losing the incremental log.
+            # The in-memory record remains available for the final rescue save.
+            raise
 
     def save_final(self, suffix: str = '') -> Path | None:
         """
         Rewrite the complete table atomically and verify the row count.
 
-        Writes to a .tmp file then renames it, so a crash during the
-        final save cannot corrupt the incremental file.
+        Flush a temporary file, then publish it without replacing an existing
+        final file. The incremental file remains independent throughout.
         """
         if not self._records:
             self._logger.warn("No trial recorded — nothing to save.")
@@ -126,7 +133,9 @@ class DataWriter:
 
         try:
             self._dir.mkdir(parents=True, exist_ok=True)
-            with open(tmp, 'w', newline='', encoding='utf-8') as f:
+            if final.exists():
+                raise FileExistsError(f'Données existantes conservées : {final}')
+            with open(tmp, 'x', newline='', encoding='utf-8') as f:
                 w = csv.DictWriter(f, fieldnames=headers,
                                    delimiter=self.DELIM,
                                    lineterminator='\n',
@@ -137,7 +146,7 @@ class DataWriter:
                 f.flush()
                 os.fsync(f.fileno())
 
-            os.replace(tmp, final)
+            self._publish_final(tmp, final)
 
             n_rows = self._count_rows(final)
             if n_rows == len(self._records):
@@ -184,11 +193,44 @@ class DataWriter:
 
     # ── Internals ────────────────────────────────────────────────────
 
+    def _reserve(self) -> None:
+        """Claim a recording before prepare() can write its design sidecar.
+
+        Keep the marker after close/abort: an interrupted run is still data.
+        Exclusive creation also protects two launches of the same run at once.
+        """
+        self._dir.mkdir(parents=True, exist_ok=True)
+        if any(self._dir.glob(f'{self._stem}_*')):
+            raise FileExistsError(f'Enregistrement déjà présent : {self._stem}')
+        marker = self._dir / f'{self._stem}_reservation.json'
+        with marker.open('x', encoding='utf-8') as stream:
+            json.dump({'recording': self._stem, 'pid': os.getpid(),
+                       'created_utc': datetime.now(timezone.utc).isoformat()}, stream)
+            stream.flush()
+            os.fsync(stream.fileno())
+
+    def _publish_final(self, tmp: Path, final: Path) -> None:
+        try:
+            # A same-directory hard link publishes atomically and fails if the
+            # destination exists (unlike os.replace on an existing recording).
+            os.link(tmp, final)
+        except FileExistsError:
+            raise
+        except OSError:
+            # Some scanner USB/network filesystems do not support hard links.
+            # Exclusive creation still forbids replacement; tmp + incremental
+            # remain intact if copying fails or the process is interrupted.
+            with final.open('xb') as target, tmp.open('rb') as source:
+                shutil.copyfileobj(source, target)
+                target.flush()
+                os.fsync(target.fileno())
+        tmp.unlink()
+
     def _open(self, headers: list[str]) -> None:
         self._headers = headers
         self._dir.mkdir(parents=True, exist_ok=True)
         self._path = self._dir / f"{self._stem}_events_incremental{self.EXT}"
-        self._file = open(self._path, 'w', newline='', encoding='utf-8')
+        self._file = open(self._path, 'x', newline='', encoding='utf-8')
         self._writer = csv.DictWriter(self._file, fieldnames=headers,
                                       delimiter=self.DELIM,
                                       lineterminator='\n',

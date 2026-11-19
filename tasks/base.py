@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 from abc import ABC, abstractmethod
 from copy import deepcopy
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 
@@ -79,7 +80,7 @@ class BaseTask(ABC):
         self.logger = logger
         self.event_bus = event_bus
         self.settings = settings
-        self.scanner = scanner
+        self.scanner = replace(scanner, trigger_key=task_config.get('trigger_key', scanner.trigger_key))
         self.task_config = task_config
 
         # ── Design ───────────────────────────────────────────────────

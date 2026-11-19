@@ -19,6 +19,9 @@ Le choix du run est indépendant du numéro du sujet. Un même sujet peut effect
 les quatre runs. Chaque acquisition, y compris partielle, est protégée contre
 l'écrasement ; elle ne bloque pas les autres runs. `5` et `005` désignent le même
 sujet (`sub-005`). L'entraînement a sa propre numérotation.
+Un fichier `*_reservation.json` réserve le nom dès le démarrage, même avant
+le premier essai. Une seconde ouverture du même enregistrement est refusée,
+y compris après interruption ; les fichiers déjà présents sont conservés.
 
 ## Présentation et synchronisation
 
@@ -51,23 +54,34 @@ Le chargement vérifie la congruence réelle, le mapping, les onsets/offsets, la
 fenêtre de réponse, les colonnes temporelles redondantes et la durée totale.
 Un planning incohérent est rejeté avant l'acquisition.
 
+Les quatre TSV contiennent douze mots neutres de quatre ou cinq lettres :
+TABLE, ETAT, LIEU, ORDRE, CAUSE, IDEE, AVIS, ACTE, FAIT, SENS, TERME, OBJET.
+Chaque mot apparaît deux ou trois fois par run E2 et deux fois par run E3.
+Les conditions, encres et horaires sont conservés. Les originaux et les
+empreintes avant/après se trouvent dans `design_versions/`.
+
 ## Touches
 
 Répondre à la couleur de l'encre en ignorant le sens du mot.
 
 | Encre | Mode PC | Mode fMRI |
 | --- | --- | --- |
-| Rouge | Flèche droite | b |
+| Rouge | Flèche gauche | b |
 | Bleu | Flèche bas | y |
-| Vert | Flèche gauche | g |
+| Vert | Flèche droite | g |
 
 Le mode PC est en plein écran, comme le mode fMRI. La flèche du milieu est
 la flèche bas.
 
 `s` valide les consignes et le bilan d'entraînement ; `t` est le trigger par défaut ;
 `Échap` interrompt le run et sauvegarde les essais terminés.
-La première réponse valide dans la fenêtre est retenue. Les pressions pendant
-la fixation n'entrent pas dans les résultats des essais.
+La première réponse valide horodatée dans la fenêtre est retenue. Plusieurs
+boutons peuvent être pressés : les appuis suivants ne remplacent pas la
+réponse ni son RT et ne raccourcissent pas l'essai. À horodatage exactement
+identique, l'ordre reçu du clavier départage les touches. Les champs
+`n_responses`, `multiple_responses`, `multiple_buttons`, `response_keys` et
+`response_RTs` conservent les appuis supplémentaires pour l'analyse.
+Les pressions pendant la fixation n'entrent pas dans les résultats des essais.
 
 ## Entraînement
 
@@ -119,6 +133,25 @@ incorrectes et absentes par condition, et les TR moyens sur réponses correctes.
 Il affiche les écarts descriptifs I−C, I−N et N−C en millisecondes et en points
 pour les taux de réussite, d'erreur et d'absence. Les résultats portent sur les
 seuls essais acquis, avec leur nombre réel par rapport aux 150 ou 120 attendus.
+
+## Préparation du poste IRM et changement des boutons
+
+La [fiche pilote](PILOTE_IRM.md) donne les étapes de branchement, le contrôle du
+trigger et la modification des touches dans `config/tasks_config/stroop.yaml`.
+
+```bash
+python tools/check_buttons.py --screen 1 --mode fmri
+```
+
+Le diagnostic affiche tous les codes reçus du boîtier et les intervalles entre
+triggers. Adapter le numéro d’écran. Il ne lance pas d’acquisition. Le trigger
+se règle dans `trigger_key: "t"` ; les réponses dans `response_keys_fmri`.
+Trois touches différentes sont requises, distinctes du trigger, de `s` et
+d’`escape`. Mettre les codes numériques entre guillemets et relancer après édition.
+
+Le [rapport GLM indépendant](analysis/glm_audit_2026-11-19_neutral_pool12/RAPPORT.md) résume les
+matrices, leurs limites et les sources. Il ne remplace pas une estimation SPM
+sur les données réellement acquises.
 
 ## Installation et vérification
 

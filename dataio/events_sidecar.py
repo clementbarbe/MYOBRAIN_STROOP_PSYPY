@@ -57,8 +57,26 @@ _COMMON: dict[str, dict] = {
     },
     'response': {
         'Description': (
-            'Key actually pressed. n/a when no response was recorded.'
+            'First valid key press by keyboard timestamp in the response window. '
+            'Exact timestamp ties retain keyboard arrival order. '
+            'Later presses do not change the scored response. n/a if absent.'
         ),
+    },
+    'n_responses': {
+        'Description': 'Number of valid key-down events in the response window, including repeats.',
+    },
+    'multiple_responses': {
+        'Description': '1 if more than one valid key-down event was recorded; otherwise 0.',
+    },
+    'multiple_buttons': {
+        'Description': '1 if at least two distinct response keys were pressed in the window; otherwise 0.',
+    },
+    'response_keys': {
+        'Description': 'All accepted response keys in detection order (timestamp order within each poll), separated by |; n/a if absent.',
+    },
+    'response_RTs': {
+        'Description': 'Latency of each event in response_keys, in seconds since stimulus onset, separated by |; n/a if absent.',
+        'Units': 's',
     },
     'correct': {
         'Description': 'Response matched the required one.',
@@ -154,7 +172,7 @@ _BY_TASK: dict[str, dict] = {
             'Levels': {
                 'congruent': 'colour word printed in the matching ink',
                 'incongruent': 'colour word printed in a conflicting ink',
-                'neutral': 'abstract non-colour word printed in an ink',
+                'neutral': 'non-colour word printed in an ink',
                 'color_mapping': 'training only: a coloured patch, no word',
             },
         },

@@ -12,7 +12,9 @@ class ButtonBoxView:
         self.color_to_key = color_to_key
         self.key_to_index = {color_to_key[color]: index
                              for index, color in enumerate(('rouge', 'bleu', 'vert'))}
-        self.key_to_index['r'] = 3
+        self.unused_key = 'r' if 'r' not in self.key_to_index else None
+        if self.unused_key is not None:
+            self.key_to_index[self.unused_key] = 3
         self.flash_until = {}
         self.body = visual.Rect(win, units='height', width=1.12, height=0.22,
                                 pos=(0, -0.15), fillColor=(0.77, 0.75, 0.69),
@@ -69,7 +71,7 @@ class ButtonBoxView:
                 tick = ' ✓' if checked is not None and key in checked else ''
                 self.labels[index].text = f'Encre {color.upper()}\n{key.upper()}{tick}'
             else:
-                self.labels[index].text = 'Non utilisé\nR'
+                self.labels[index].text = 'Non utilisé' + ('\nR' if self.unused_key else '')
             self.labels[index].draw()
 
     def draw_discovery(self, now: float, checked: set, remaining: float):

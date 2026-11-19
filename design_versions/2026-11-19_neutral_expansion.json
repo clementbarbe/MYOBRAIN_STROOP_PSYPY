@@ -1,0 +1,122 @@
+{
+  "date": "2026-11-19",
+  "neutral_words": [
+    "TABLE",
+    "ETAT",
+    "LIEU",
+    "ORDRE",
+    "CAUSE",
+    "IDEE",
+    "AVIS",
+    "ACTE",
+    "FAIT",
+    "SENS",
+    "TERME",
+    "OBJET"
+  ],
+  "allocation_seed": 20261119,
+  "changed_columns": [
+    "word",
+    "stimulus"
+  ],
+  "unchanged": "All other cells, including timings, conditions, ink colors and response keys. Non-neutral rows unchanged.",
+  "note": "Practical lexical expansion; no normative lexical matching. Source seed still describes the original temporal design.",
+  "runs": [
+    {
+      "file": "run-01_E2_A_events.tsv",
+      "before_sha256": "01ebded95e021f904e23d035c8b5e0a88e9d61cb240cc0ddb8fd13bb7a0edf74",
+      "after_sha256": "491dd39e21b2868db8c8242937877bece07f0007d6e33df6b30668e64ee51313",
+      "neutral_word_counts": {
+        "ACTE": 2,
+        "AVIS": 2,
+        "CAUSE": 3,
+        "ETAT": 3,
+        "FAIT": 3,
+        "IDEE": 3,
+        "LIEU": 2,
+        "OBJET": 2,
+        "ORDRE": 2,
+        "SENS": 3,
+        "TABLE": 3,
+        "TERME": 2
+      },
+      "neutral_ink_counts": {
+        "rouge": 10,
+        "bleu": 10,
+        "vert": 10
+      }
+    },
+    {
+      "file": "run-02_E3_A_events.tsv",
+      "before_sha256": "6f3a2ecc032dda012cc1a300f321f4a615632ec4000b196ecc96bd6ec6ca9374",
+      "after_sha256": "d3c8d910a200928a3477e02864af763d56255e6840846e7624e63c585ea28583",
+      "neutral_word_counts": {
+        "ACTE": 2,
+        "AVIS": 2,
+        "CAUSE": 2,
+        "ETAT": 2,
+        "FAIT": 2,
+        "IDEE": 2,
+        "LIEU": 2,
+        "OBJET": 2,
+        "ORDRE": 2,
+        "SENS": 2,
+        "TABLE": 2,
+        "TERME": 2
+      },
+      "neutral_ink_counts": {
+        "rouge": 8,
+        "bleu": 8,
+        "vert": 8
+      }
+    },
+    {
+      "file": "run-03_E3_B_events.tsv",
+      "before_sha256": "ddaf7e1b3111a78495d89b924157f59c16a32369c5dcd4af62b2b7499098ff4d",
+      "after_sha256": "63bd27eefa75b84f982308e7fb258b18b9cce864fae81a9e53da2511989e1a04",
+      "neutral_word_counts": {
+        "ACTE": 2,
+        "AVIS": 2,
+        "CAUSE": 2,
+        "ETAT": 2,
+        "FAIT": 2,
+        "IDEE": 2,
+        "LIEU": 2,
+        "OBJET": 2,
+        "ORDRE": 2,
+        "SENS": 2,
+        "TABLE": 2,
+        "TERME": 2
+      },
+      "neutral_ink_counts": {
+        "rouge": 8,
+        "bleu": 8,
+        "vert": 8
+      }
+    },
+    {
+      "file": "run-04_E2_B_events.tsv",
+      "before_sha256": "ab68062f89f321703fd3deb1c078e51e5ce0fb4c95a3020ee1e1c507fb40e00b",
+      "after_sha256": "5a4834602ab3257e41f5f96b91550bc64cf9e232c84021876ff6f05102edb90e",
+      "neutral_word_counts": {
+        "ACTE": 2,
+        "AVIS": 2,
+        "CAUSE": 3,
+        "ETAT": 3,
+        "FAIT": 3,
+        "IDEE": 3,
+        "LIEU": 2,
+        "OBJET": 2,
+        "ORDRE": 2,
+        "SENS": 3,
+        "TABLE": 3,
+        "TERME": 2
+      },
+      "neutral_ink_counts": {
+        "rouge": 10,
+        "bleu": 10,
+        "vert": 10
+      }
+    }
+  ]
+}

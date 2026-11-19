@@ -7,6 +7,7 @@ from __future__ import annotations
 import atexit
 import signal
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 from psychopy import visual, monitors
@@ -31,7 +32,10 @@ class Experiment:
 
     def __init__(self, settings: ExperimentSettings):
         self.settings = settings
-        self.scanner: ScannerConfig = get_scanner(settings.scanner_name)
+        task_config = load_task_config('stroop')
+        profile = get_scanner(settings.scanner_name)
+        self.scanner: ScannerConfig = replace(
+            profile, trigger_key=task_config.get('trigger_key', profile.trigger_key))
         self.event_bus = EventBus()
 
         self.logger = ExperimentLogger(settings)

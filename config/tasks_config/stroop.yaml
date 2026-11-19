@@ -6,6 +6,8 @@ display_name: Stroop
 repetition_time_sec: 1.23
 # Nombre de triggers précédant le premier volume conservé (0 par défaut).
 discard_initial_triggers: 0
+# Trigger clavier envoyé par le scanner, confirmé pour le pilote.
+trigger_key: "t"
 
 stimulus:
   word_height: 0.15
@@ -15,7 +17,9 @@ colors:
   bleu: [-1.0, -1.0, 1.0]
   vert: [-1.0, 0.8, -1.0]
 
-response_keys_pc: {rouge: right, bleu: down, vert: left}
+# Touches PsychoPy : modifier ici, puis relancer main.py.
+# Pour des touches numériques, utiliser des guillemets : "1", "2", "3".
+response_keys_pc: {rouge: left, bleu: down, vert: right}
 response_keys_fmri: {rouge: b, bleu: y, vert: g}
 
 # Seuil pratique de vérification, ajustable lors du pilotage.
